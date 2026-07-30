@@ -244,8 +244,12 @@ void setup() {
   }
 
   // 5) EPD
+  // İlk boot(lar)da MUTLAKA FULL: partial refresh onceden FULL ile kurulan 0x26
+  // baseline'ina gore calisir; baseline yoksa ekran bos kalir.
 #if ENABLE_EPD
-  bool full = (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0;
+  bool full = (g_boot_count <= 1) ||
+              (EPD_FULL_REFRESH_EVERY_N_BOOTS > 0 &&
+               (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0);
   display_show(rec, store_total(), bpct, full);
 #endif
 
