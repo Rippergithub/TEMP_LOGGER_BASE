@@ -249,6 +249,12 @@ void setup() {
     store_push(rec, bpct);
   }
 
+  // 4.5) OTA penceresi — gateway bu MAC icin OTA push edecsе yakala.
+  //      BEGIN gelirse firmware alinip END'de cihaz reboot olur (asagi donmez).
+#if ENABLE_OTA
+  if (radio_ok) espnow_ota_listen();
+#endif
+
   // 5) EPD
   // İlk boot(lar)da MUTLAKA FULL: partial refresh onceden FULL ile kurulan 0x26
   // baseline'ina gore calisir; baseline yoksa ekran bos kalir.

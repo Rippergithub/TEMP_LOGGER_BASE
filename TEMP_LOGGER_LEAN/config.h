@@ -27,6 +27,15 @@
 #define ENABLE_EPD              true
 #define ENABLE_ESPNOW           true
 #define ENABLE_ENCRYPTION       true    // <-- Kullanici karari: sifreleme KALSIN (AES-128-GCM)
+#define ENABLE_OTA              true    // ESP-NOW uzerinden OTA (gateway Faydam_GTW202_ESPGTW ile uyumlu)
+
+// --- OTA (binary 0x10/0x11/0x12, AES-GCM sifreli) ---
+// ⚠️ Partition semasi IKI app slotu (app0+app1) + littlefs icermeli.
+//    Arduino IDE Tools -> "Default 4MB with spiffs" (app0/app1 1.2MB + spiffs 1.5MB)
+//    hem OTA hem 30-gun LittleFS buffer'i karsilar.
+#define OTA_LISTEN_WINDOW_MS    1500    // send+ACK sonrasi BEGIN'i yakalama penceresi
+#define OTA_IDLE_TIMEOUT_MS     6000    // chunk gelmezse OTA'yi iptal et (pil koruma)
+#define OTA_MAX_FW_BYTES        (2u * 1024u * 1024u)  // gecerli firmware boyut ust siniri
 
 // -----------------------------------------------------------------------------
 //  Uyku / donguo

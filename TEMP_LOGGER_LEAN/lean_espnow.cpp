@@ -1,5 +1,6 @@
 #include "lean_espnow.h"
 #include "lean_crypto.h"
+#include "lean_ota.h"
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
@@ -49,12 +50,20 @@ static void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len
   s_gw_known = true;
 
 #if ENABLE_ENCRYPTION
-  // Sifreli cerceve -> plaintext JSON. IV icin gonderen (gateway) MAC'i kullanilir.
+  // Sifreli cerceve -> plaintext. IV icin gonderen (gateway) MAC'i kullanilir.
   static uint8_t plain[512];
   uint32_t rn; uint16_t rbc;
   size_t pn = crypto_decrypt(data, len, info->src_addr, plain, sizeof(plain) - 1, &rn, &rbc);
-  if (pn > 0) { plain[pn] = 0; parse_ack_json((const char*)plain, pn); return; }
+  if (pn > 0) {
+#if ENABLE_OTA
+    if (ota_is_packet(plain, pn)) { ota_handle(plain, pn); return; }   // OTA binary
+#endif
+    plain[pn] = 0; parse_ack_json((const char*)plain, pn); return;     // ACK JSON
+  }
   // decrypt basarisiz -> belki duz JSON (lab) gelmistir, dene
+#endif
+#if ENABLE_OTA
+  if (ota_is_packet(data, len)) { ota_handle(data, len); return; }
 #endif
   if (len > 0 && (data[0] == '{')) parse_ack_json((const char*)data, len);
 }
@@ -176,6 +185,27 @@ bool espnow_send_bc(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
   DEBUG_PRINT("[ESPNOW] BC gonderim="); DEBUG_PRINTLN(ok ? "OK" : "FAIL");
   return ok;
 }
+
+#if ENABLE_OTA
+// send+ACK sonrasi radyo aciken cagirilir. Kisa pencerede BEGIN gelirse OTA
+// dongusune girer; END basariliysa cihaz yeniden baslar (bu fonksiyon donmez).
+// BEGIN gelmezse veya idle timeout olursa doner -> normal akis (uyku) devam.
+void espnow_ota_listen() {
+  uint32_t t0 = millis();
+  while (!ota_active() && (millis() - t0) < OTA_LISTEN_WINDOW_MS) delay(10);
+  if (!ota_active()) return;                       // OTA yok
+
+  DEBUG_PRINTLN("[OTA] pencere: firmware aliniyor...");
+  while (ota_active()) {
+    delay(5);
+    if ((millis() - ota_last_ms()) > OTA_IDLE_TIMEOUT_MS) {
+      DEBUG_PRINTLN("[OTA] idle timeout -> abort");
+      ota_abort();
+      break;
+    }
+  }
+}
+#endif
 
 void espnow_end() {
   esp_now_deinit();

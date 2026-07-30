@@ -49,6 +49,20 @@ AAD:      yok (NULL)
 `crypto_selftest()` PMK'yi kanonik vektörle (`1680e9…bba3`) doğrular. `lean_crypto`
 artık yalnızca PMK türetimi + kendi MAC'i + kolay imza sağlayan ince bir sarmalayıcı.
 
+## OTA (ESP-NOW üzerinden, gateway `Faydam_GTW202_ESPGTW` ile uyumlu)
+Gateway'in gönderdiği **binary** OTA paketleri (AES-GCM şifreli) ile firmware güncelleme:
+- `BEGIN 0x10`: `[type1][file_size 4 LE][md5 32]` → `Update.begin` + `Update.setMD5`
+- `DATA 0x11`: `[type1][index 2][total 2][data_len 1][data ≤200]` → `Update.write`
+- `END 0x12`: `Update.end()` başarılıysa `ESP.restart()`
+
+Akış: her cycle'da send+ACK sonrası **kısa OTA dinleme penceresi** (`OTA_LISTEN_WINDOW_MS`).
+Gateway bu MAC için OTA kuyruğa aldıysa BEGIN gönderir; sensör OTA döngüsüne girip
+(idle timeout `OTA_IDLE_TIMEOUT_MS` ile korumalı) tüm chunk'ları alır, END'de reboot eder.
+BEGIN gelmezse pencere bitince normal akış (EPD + uyku) sürer. `ENABLE_OTA=false` ile kapatılır.
+
+⚠️ **Partition:** OTA iki app slotu ister. `"Default 4MB with spiffs"` (app0+app1+spiffs)
+hem OTA hem 30-gün LittleFS buffer'ı karşılar.
+
 ## Dosyalar
 | Dosya | İş |
 |---|---|
@@ -58,7 +72,8 @@ artık yalnızca PMK türetimi + kendi MAC'i + kolay imza sağlayan ince bir sar
 | `lean_store.*` | Tiered RTC/FLASH buffer |
 | `lean_crypto.*` | PMK türetimi + `EspNowCrypto` sarmalayıcı |
 | `EspNowCrypto.*` | Ortak AES-128-GCM kütüphanesi (gateway/sensör ile aynı, vendor'landı) |
-| `lean_espnow.*` | init / send+ACK / BC |
+| `lean_espnow.*` | init / send+ACK / BC / OTA dinleme |
+| `lean_ota.*` | ESP-NOW OTA alıcısı (Update.h + MD5) |
 | `lean_display.*` | EPD dashboard (Waveshare GUI_Paint) |
 | `EPD.*`, `TH09C.*`, `Boardoza_MAX31865.*` | dev sürümden kopyalanan sürücüler |
 
