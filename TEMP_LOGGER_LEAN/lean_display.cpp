@@ -26,7 +26,7 @@ static void setActiveSPI(int activePin) {
 }
 
 void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
-                  bool full, int32_t tz_off) {
+                  bool full, int32_t tz_off, uint32_t boot_count) {
   char buf[24];
   bool probe_ok = (rec.status == S_STATUS_OK || rec.status == S_STATUS_OUT_OF_RANGE);
 
@@ -130,13 +130,25 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     Paint_DrawString_EN(145 + (100 - (int)(strlen(buf) * 16)) / 2, 55, buf, &Font24, WHITE0, BLACK0);
   }
 
-  // --- 4. FOOTER BAR ---
+  // --- 4. FOOTER BAR (bilgi donusumlu, referans DisplayManager mantigi) ---
+  // Oncelik: prob/pil/baglanti uyarilari; normalde HW/FW/UID bilgisi boot_count%3
+  // ile donusumlu gosterilir.
   Paint_DrawRectangle(0, 103, 249, 120, BLACK0, DRAW_FILL_FULL, DOT_PIXEL_1X1);
+  char fbuf[28];
   const char* footer;
-  if (!probe_ok)                    footer = "PROB KONTROL EDINIZ";
-  else if (batt_perc <= 20)         footer = "BATARYA ZAYIF";
-  else if (pending > 2)             footer = "BAGLANTI YOK";
-  else                              footer = "FAYDAM LEAN";
+  if (!probe_ok)             footer = "PROB KONTROL EDINIZ";
+  else if (batt_perc <= 20)  footer = "BATARYA ZAYIF";
+  else if (pending > 2)      footer = "BAGLANTI YOK";
+  else {
+    switch (boot_count % 3) {
+      case 0:  snprintf(fbuf, sizeof(fbuf), "HW: %s", HARDWARE_MODEL); break;
+      case 1:  snprintf(fbuf, sizeof(fbuf), "FW: %s", FW_VERSION);     break;
+      default: // UID = MAC son 4 byte (cleanMac header'da hesaplandi)
+        snprintf(fbuf, sizeof(fbuf), "UID:FYDM26%s", cleanMac.substring(4).c_str());
+        break;
+    }
+    footer = fbuf;
+  }
   Paint_DrawString_EN((250 - (int)(strlen(footer) * 8)) / 2, 105, footer, &Font16, BLACK0, WHITE0);
 
   PIC_display(BlackImage, !full);
@@ -146,7 +158,7 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
 }
 
 #else  // ENABLE_EPD == false
-void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t) {
+void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t) {
   DEBUG_PRINTLN("[EPD] devre disi (ENABLE_EPD=false)");
 }
 #endif

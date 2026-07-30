@@ -256,7 +256,7 @@ void setup() {
   bool full = (g_boot_count <= 1) ||
               (EPD_FULL_REFRESH_EVERY_N_BOOTS > 0 &&
                (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0);
-  display_show(rec, store_total(), bpct, full, g_tz_off);
+  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count);
 #endif
 
   // 6) UYKU
