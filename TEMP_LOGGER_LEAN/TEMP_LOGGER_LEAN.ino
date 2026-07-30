@@ -50,6 +50,7 @@ RTC_DATA_ATTR static float    g_t_high       = T_HIGH_LIMIT;
 RTC_DATA_ATTR static float    g_h_low        = H_LOW_LIMIT;
 RTC_DATA_ATTR static float    g_h_high       = H_HIGH_LIMIT;
 RTC_DATA_ATTR static float    g_cal_off      = 0.0f;
+RTC_DATA_ATTR static bool     g_in_alarm     = false;  // histerezis durumu
 
 static TH09C s_th09c;
 
@@ -124,6 +125,21 @@ static SensorRecord measure() {
 #endif
 
   r.temp += g_cal_off;   // kalibrasyon offset (ACK settings)
+
+  // --- Alarm (esik + histerezis). Prob kopuksa alarm degerlendirilmez. ---
+  if (r.status == S_STATUS_OK) {
+    bool over;
+    if (g_in_alarm) {
+      // Alarmdan cikis: histerezis kadar iceri girmeli
+      over = (r.temp > g_t_high - T_HYSTERESIS) || (r.temp < g_t_low + T_HYSTERESIS) ||
+             (r.hum  > g_h_high - H_HYSTERESIS) || (r.hum  < g_h_low + H_HYSTERESIS);
+    } else {
+      over = (r.temp > g_t_high) || (r.temp < g_t_low) ||
+             (r.hum  > g_h_high) || (r.hum  < g_h_low);
+    }
+    g_in_alarm = over;
+    if (over) { r.status = S_STATUS_OUT_OF_RANGE; r.flags |= 0x01; }
+  }
 
   uint16_t mv = read_batt_mv();
   r.batt_mv = mv;
