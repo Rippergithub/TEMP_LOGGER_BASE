@@ -21,6 +21,7 @@
 #include "config.h"
 #include "lean_types.h"
 #include "lean_store.h"
+#include "lean_crypto.h"
 #include "lean_espnow.h"
 #include "lean_display.h"
 #include "TH09C.h"
@@ -146,7 +147,7 @@ static void apply_ack(const AckResult& ack) {
   if (ack.special_cmd == 0xBC) {
     char uid[24]; make_uid(uid, sizeof(uid));
     DEBUG_PRINTLN("[ACK] special_cmd=0xBC -> BC gonderiliyor");
-    espnow_send_bc(uid);
+    espnow_send_bc(uid, (uint16_t)g_boot_count, ++g_pkt_counter);
   }
 }
 
@@ -178,6 +179,10 @@ void setup() {
   DEBUG_PRINT("  boot#="); DEBUG_PRINTLN(g_boot_count);
 
   pinMode(WAKE_PIN, INPUT_PULLDOWN);
+
+#if ENABLE_ENCRYPTION
+  crypto_selftest();   // PMK'yi gateway kanonik test vektoruyle dogrula
+#endif
 
   // Bus'lar
   SPI.begin(SPI_CLK, SPI_MISO, SPI_MOSI);
@@ -213,7 +218,7 @@ void setup() {
     SensorRecord old;
     int drained = 0;
     while (store_peek_oldest(&old)) {
-      if (espnow_send_record(old, g_boot_count, ++g_pkt_counter, &ack)) {
+      if (espnow_send_record(old, (uint16_t)g_boot_count, ++g_pkt_counter, &ack)) {
         store_remove_oldest();
         apply_ack(ack);
         drained++;
@@ -227,7 +232,7 @@ void setup() {
 
     // 3b) Bu dongunun olcumunu gonder
     if (store_total() == 0) {
-      current_sent = espnow_send_record(rec, g_boot_count, ++g_pkt_counter, &ack);
+      current_sent = espnow_send_record(rec, (uint16_t)g_boot_count, ++g_pkt_counter, &ack);
       if (current_sent) apply_ack(ack); else --g_pkt_counter;
     }
   }

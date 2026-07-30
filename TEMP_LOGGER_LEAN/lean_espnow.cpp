@@ -47,9 +47,10 @@ static void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len
   s_gw_known = true;
 
 #if ENABLE_ENCRYPTION
-  // Sifreli cerceve -> plaintext JSON
+  // Sifreli cerceve -> plaintext JSON. IV icin gonderen (gateway) MAC'i kullanilir.
   static uint8_t plain[512];
-  size_t pn = crypto_decrypt(data, len, plain, sizeof(plain) - 1);
+  uint32_t rn; uint16_t rbc;
+  size_t pn = crypto_decrypt(data, len, info->src_addr, plain, sizeof(plain) - 1, &rn, &rbc);
   if (pn > 0) { plain[pn] = 0; parse_ack_json((const char*)plain, pn); return; }
   // decrypt basarisiz -> belki duz JSON (lab) gelmistir, dene
 #endif
@@ -96,10 +97,10 @@ static bool send_frame(const uint8_t* frame, size_t n) {
 }
 
 static size_t build_and_encrypt(const SensorDataMessage& msg,
-                                uint32_t boot_count, uint32_t pkt,
+                                uint16_t boot_cnt, uint32_t nonce,
                                 uint8_t* out, size_t cap) {
 #if ENABLE_ENCRYPTION
-  return crypto_encrypt((const uint8_t*)&msg, sizeof(msg), boot_count, pkt, out, cap);
+  return crypto_encrypt((const uint8_t*)&msg, sizeof(msg), boot_cnt, nonce, out, cap);
 #else
   if (cap < sizeof(msg)) return 0;
   memcpy(out, &msg, sizeof(msg));
@@ -107,7 +108,7 @@ static size_t build_and_encrypt(const SensorDataMessage& msg,
 #endif
 }
 
-bool espnow_send_record(const SensorRecord& rec, uint32_t boot_count,
+bool espnow_send_record(const SensorRecord& rec, uint16_t boot_cnt,
                         uint32_t pkt, AckResult* ack_out) {
   SensorDataMessage msg = {};
   msg.msg_type         = MSG_SENSOR_DATA;
@@ -123,8 +124,8 @@ bool espnow_send_record(const SensorRecord& rec, uint32_t boot_count,
   msg.rssi = 0; msg.channel = ESPNOW_CHANNEL;
   strncpy(msg.version, FW_VERSION, sizeof(msg.version) - 1);
 
-  uint8_t frame[GCM_IV_LEN + GCM_TAG_LEN + sizeof(SensorDataMessage) + 4];
-  size_t n = build_and_encrypt(msg, boot_count, pkt, frame, sizeof(frame));
+  uint8_t frame[GCM_HDR_LEN + GCM_TAG_LEN + sizeof(SensorDataMessage) + 4];
+  size_t n = build_and_encrypt(msg, boot_cnt, pkt, frame, sizeof(frame));
   if (n == 0) { DEBUG_PRINTLN("[ESPNOW] encrypt FAIL"); return false; }
 
   // uygulama ACK durumunu sifirla
@@ -147,7 +148,7 @@ bool espnow_send_record(const SensorRecord& rec, uint32_t boot_count,
   return true;   // L2 ACK = gateway aldi; uygulama ACK opsiyonel
 }
 
-bool espnow_send_bc(const char* uid) {
+bool espnow_send_bc(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
   StaticJsonDocument<384> doc;
   doc["typ"] = "BC";
   doc["uid"] = uid;
@@ -161,10 +162,10 @@ bool espnow_send_bc(const char* uid) {
   char json[384];
   size_t jn = serializeJson(doc, json, sizeof(json));
 
-  uint8_t frame[GCM_IV_LEN + GCM_TAG_LEN + 384];
+  uint8_t frame[GCM_HDR_LEN + GCM_TAG_LEN + 384];
   size_t n;
 #if ENABLE_ENCRYPTION
-  n = crypto_encrypt((const uint8_t*)json, jn, 0, millis(), frame, sizeof(frame));
+  n = crypto_encrypt((const uint8_t*)json, jn, boot_cnt, nonce, frame, sizeof(frame));
 #else
   memcpy(frame, json, jn); n = jn;
 #endif

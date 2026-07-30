@@ -17,11 +17,22 @@ hafif türevi. Tek iş: **Uyan → Ölç → Gönder → (olmazsa) Sakla → Uyu
 - **Pil bitmeye yakın (≤%20)** → NVS/FLASH (`FLASH_BUF_MAX=400`), güç kesilse de kalıcı; ayrıca eşiğin altına düşünce RTC'deki kayıtlar flash'a taşınır
 - Drain sırası: önce FLASH (kalıcı/eski), sonra RTC
 
-## Şifreleme (kullanıcı kararı: KALSIN)
+## Şifreleme (kullanıcı kararı: KALSIN) — Gateway `Faydam_GTW202_ESPGTW` ile eşlendi
+Gateway kaynağından (espnow_security.cpp + docs/GATEWAY_SPEC.md + SECURITY.md) **doğrulanan** kontrat:
 - AES-128-GCM, `PMK = SHA-256("FYDM-BOARD-01" + "_FYDM_PMK_SALT_V1")[:16]`
-- Çerçeve: `[IV:12][TAG:16][CIPHERTEXT]`, AAD = `PROJECT_ID_HASH`
-- ⚠️ **İnterop:** Bu çerçeve/AAD düzeni Gateway'in decrypt tarafıyla birebir aynı olmalı.
-  Gateway farklı düzen kullanıyorsa yalnızca `lean_crypto.cpp` + `config.h GCM_*` değişir.
+  - Test vektörü: `1680e9159118feb685a24c7e1e78bba3` (cihazda `crypto_selftest()` doğrular)
+- **IV (12B) = `[Sender_MAC:6][boot_cnt:2 BE][nonce:4 BE]`** ✓
+- `boot_cnt` = uint16 (NVS, her boot++), `nonce` = uint32 (her paket++)
+- 16B TAG; `SensorDataMessage` struct gateway `espnow_protocol.h` ile **birebir** ✓
+- Anti-replay: `boot_cnt<son` veya (eşit boot_cnt && `nonce<=son`) → gateway DROP
+
+⚠️ **Tek doğrulanmamış nokta — çerçeve bayt sırası:** Header/TAG/CIPHERTEXT
+dizilişi + AAD, paylaşılan `EspNowCrypto` Arduino kütüphanesinde tanımlı ve o
+kütüphane gateway repo'sunda **vendor'lanmamış**. LEAN şu düzeni kullanıyor
+(dokümante kontrata göre en olası): `[boot_cnt:2][nonce:4][TAG:16][CT]`, AAD=header.
+Byte-exact garanti için `EspNowCrypto.h/.cpp`'yi içeren repoyu ekleyip
+`lean_crypto.cpp` yerine doğrudan onu çağırmak en sağlamı — düzen değişirse
+**sadece** `lean_crypto.cpp` + `config.h GCM_*` etkilenir.
 
 ## Dosyalar
 | Dosya | İş |
