@@ -1,0 +1,29 @@
+# --- Arduino / arduino-cli build çıktıları ---
+build/
+*.bin
+*.elf
+*.hex
+*.map
+*.d
+*.o
+*.a
+/tmp/
+.arduino/
+.arduino15/
+
+# --- Arduino IDE ---
+*.ino.cpp
+*.development
+
+# --- Editör / OS ---
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# --- Yerel gizli / konfig ---
+secrets.h
+*_secrets.h
+*.local

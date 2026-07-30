@@ -89,6 +89,37 @@ cp EPD.cpp EPD.h EPD_SPI.h TH09C.cpp TH09C.h Boardoza_MAX31865.cpp Boardoza_MAX3
 # (EPD.cpp ve TH09C.cpp `config.h` include eder → o klasörde bir config.h bulunmalı)
 ```
 
+## arduino-cli ile komut satırından derleme / upload
+
+```bash
+# 0) Kurulum (bir kez)
+arduino-cli config init
+arduino-cli config add board_manager.additional_urls \
+  https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+arduino-cli core update-index
+arduino-cli core install esp32:esp32          # Arduino core 3.x (ESP32-C6)
+
+# Kütüphaneler
+arduino-cli lib install ArduinoJson
+# Waveshare GUI_Paint + fonts: kütüphane yöneticisinde yok → elle
+#   ~/Arduino/libraries/ altına kopyalanır (EPD kullanılıyorsa gerekli)
+
+# 1) FQBN — derleme ayarlarıyla (Flash 40MHz/DIO, CPU 80MHz, Erase Disabled)
+FQBN="esp32:esp32:esp32c6:FlashFreq=40,FlashMode=dio,CPUFreq=80,EraseFlash=none"
+
+# 2) Derle (LEAN sketch)
+arduino-cli compile --fqbn "$FQBN" TEMP_LOGGER_LEAN
+
+# 3) Upload (portu kendine göre ayarla: ls /dev/ttyACM* /dev/ttyUSB*)
+arduino-cli upload -p /dev/ttyACM0 --fqbn "$FQBN" TEMP_LOGGER_LEAN
+
+# 4) Seri monitör (log takibi)
+arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
+```
+
+> Tam sürüm için sketch adını `TEMP_LOGGER_BASE` yap. `--verbose` derleme
+> hatalarını ayrıntılandırır; `--clean` önbelleği temizler.
+
 ## Belgeler
 
 - `TEMP_LOGGER_LEAN/README_LEAN.md` — LEAN mimarisi, buffer/kripto kontratı
