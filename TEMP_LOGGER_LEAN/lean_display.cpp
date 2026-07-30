@@ -86,11 +86,17 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
   // --- 2. SOL SICAKLIK/NEM CERCEVESI (5,21)-(140,98) ---
   Paint_DrawRectangle(5, 21, 140, 98, BLACK0, DRAW_FILL_EMPTY, DOT_PIXEL_3X3);
 
-  // Sicaklik "XX.X C" (Font20)
-  if (probe_ok) snprintf(buf, sizeof(buf), "%.1f C", rec.temp);
-  else          snprintf(buf, sizeof(buf), "--.- C");
-  int tW = strlen(buf) * 12;                 // Font20 width=12
-  Paint_DrawString_EN(5 + (137 - tW) / 2, 35, buf, &Font20, WHITE0, BLACK0);
+  // Sicaklik "XX.X °C" (Font20). Derece simgesi kucuk daire ile cizilir
+  // (referans DisplayManager ile ayni: sayidan sonra, C'den once).
+  char tprefix[12];
+  if (probe_ok) snprintf(tprefix, sizeof(tprefix), "%.1f", rec.temp);
+  else          snprintf(tprefix, sizeof(tprefix), "--.-");
+  snprintf(buf, sizeof(buf), "%s  C", tprefix);   // sayi + bosluk(derece yeri) + C
+  int tW = strlen(buf) * 12;                       // Font20 width=12
+  int tX = 5 + (137 - tW) / 2, tY = 35;
+  Paint_DrawString_EN(tX, tY, buf, &Font20, WHITE0, BLACK0);
+  // Derece dairesi: sayidan hemen sonra (bosluk konumu)
+  Paint_DrawCircle(tX + (int)strlen(tprefix) * 12 + 6, tY + 3, 2, BLACK0, DRAW_FILL_EMPTY, DOT_PIXEL_1X1);
 
   // Nem "XX% RH" (Font20)
   if (probe_ok) snprintf(buf, sizeof(buf), "%d%% RH", (int)rec.hum);
