@@ -29,11 +29,18 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc, 
   char buf[24];
   bool probe_ok = (rec.status == S_STATUS_OK || rec.status == S_STATUS_OUT_OF_RANGE);
 
+  // EPD pin init (Faydam_GTW202_TEMP initDisplay ile birebir).
+  // KRITIK: EPD_RES/EPD_DC OUTPUT olmali; RES boşta kalirsa panel resetlenmez.
+  SPI.begin(SPI_CLK, SPI_MISO, SPI_MOSI, EPD_CS);
+  pinMode(EPD_CS, OUTPUT);  digitalWrite(EPD_CS, HIGH);
+  pinMode(EPD_BUSY, INPUT);
+  pinMode(EPD_RES, OUTPUT); digitalWrite(EPD_RES, HIGH);  // RST boşta kalmasin
+  pinMode(EPD_DC, OUTPUT);
+
   setActiveSPI(-1);
   delay(20);
   digitalWrite(REG_CTL, HIGH);
   digitalWrite(LDO_CTL, HIGH);
-  pinMode(EPD_BUSY, INPUT);
   setActiveSPI(EPD_CS);
 
   EPD_Init_Custom(!full);
