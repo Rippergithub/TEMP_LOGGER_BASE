@@ -52,7 +52,11 @@ artık yalnızca PMK türetimi + kendi MAC'i + kolay imza sağlayan ince bir sar
 
 ## Bağımlılıklar
 - ArduinoJson (ACK parse)
-- Waveshare `GUI_Paint.h` + `fonts.h` (EPD; yoksa `ENABLE_EPD=false`)
+- **EPD kütüphanesi vendor'landı** — `GUI_Paint.*`, `Fonts.*`, `EPD.*`, `EPD_SPI.h`
+  `Faydam_GTW202_TEMP` reposundan birebir kopyalandı (harici kütüphaneye gerek yok).
+  Ekran düzeni (dashboard) o repodaki `DisplayManager::epd_update_data` layout'una göre:
+  3px çerçeve + header (MAC/sinyal/pil) + sol sıcaklık/nem çerçevesi (Font20) +
+  sağ "SON DATA"/saat paneli (Font24) + footer bar — yönetici bağımlılıkları olmadan.
 - ESP32 Arduino core 3.x (ESP32-C6, IDF5 ESP-NOW recv API)
 
 ## Derleme ayarları
