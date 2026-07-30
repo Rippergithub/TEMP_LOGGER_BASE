@@ -25,7 +25,8 @@ static void setActiveSPI(int activePin) {
   if (activePin != -1) digitalWrite(activePin, LOW);
 }
 
-void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc, bool full) {
+void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
+                  bool full, int32_t tz_off) {
   char buf[24];
   bool probe_ok = (rec.status == S_STATUS_OK || rec.status == S_STATUS_OUT_OF_RANGE);
 
@@ -109,9 +110,11 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc, 
   const char* label = probe_ok ? "SON DATA" : "PROB?";
   Paint_DrawString_EN(145 + (100 - (int)(strlen(label) * 8)) / 2, 32, label, &Font16, WHITE0, BLACK0);
 
-  // Saat (zaman senkron varsa) yoksa buffer sayisi
+  // Saat (zaman senkron varsa) yoksa buffer sayisi.
+  // rec.timestamp UTC epoch; yerel saat icin tz_off (gateway ACK 'off') eklenir
+  // ve gmtime_r ile bicimlenir (sistem TZ'sine bagimli kalmadan dogru saat).
   if (rec.timestamp > 1000000000UL) {
-    struct tm ti; time_t t = (time_t)rec.timestamp; localtime_r(&t, &ti);
+    struct tm ti; time_t t = (time_t)((int64_t)rec.timestamp + tz_off); gmtime_r(&t, &ti);
     char tb[8]; strftime(tb, sizeof(tb), "%H:%M", &ti);
     Paint_DrawString_EN(145 + (100 - (int)(strlen(tb) * 16)) / 2, 48, tb, &Font24, WHITE0, BLACK0);
     char db[12]; strftime(db, sizeof(db), "%d.%m.%Y", &ti);
@@ -137,7 +140,7 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc, 
 }
 
 #else  // ENABLE_EPD == false
-void display_show(const SensorRecord&, uint16_t, uint8_t, bool) {
+void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t) {
   DEBUG_PRINTLN("[EPD] devre disi (ENABLE_EPD=false)");
 }
 #endif

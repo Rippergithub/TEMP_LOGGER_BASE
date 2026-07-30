@@ -40,7 +40,8 @@
 // ---- RTC-korumali durum (deep-sleep boyunca yasar) -------------------------
 RTC_DATA_ATTR static uint32_t g_boot_count   = 0;
 RTC_DATA_ATTR static uint32_t g_pkt_counter  = 0;
-RTC_DATA_ATTR static uint32_t g_last_unix    = 0;   // son senkron gateway zamani
+RTC_DATA_ATTR static uint32_t g_last_unix    = 0;   // son senkron gateway zamani (UTC)
+RTC_DATA_ATTR static int32_t  g_tz_off       = 10800; // timezone offset (sn), ACK 'off' (TR varsayilan +3s)
 RTC_DATA_ATTR static uint32_t g_sleep_sec    = DEFAULT_SLEEP_SEC;
 
 static TH09C s_th09c;
@@ -139,7 +140,12 @@ static void make_uid(char* out, size_t cap) {
 // -----------------------------------------------------------------------------
 static void apply_ack(const AckResult& ack) {
   if (!ack.got_ack) return;
-  if (ack.unix_time > 0) { g_last_unix = ack.unix_time; DEBUG_PRINT("[ACK] time sync="); DEBUG_PRINTLN(ack.unix_time); }
+  if (ack.unix_time > 0) {
+    g_last_unix = ack.unix_time;
+    g_tz_off = ack.tz_off;   // yerel saat offset'i (yalniz gecerli zaman senkronunda)
+    DEBUG_PRINT("[ACK] time sync="); DEBUG_PRINT(ack.unix_time);
+    DEBUG_PRINT(" off="); DEBUG_PRINTLN(ack.tz_off);
+  }
   if (ack.sleep_sec  > 0) {
     g_sleep_sec = constrain(ack.sleep_sec, MIN_SLEEP_SEC, MAX_SLEEP_SEC);
     DEBUG_PRINT("[ACK] sleep_sec="); DEBUG_PRINTLN(g_sleep_sec);
@@ -250,7 +256,7 @@ void setup() {
   bool full = (g_boot_count <= 1) ||
               (EPD_FULL_REFRESH_EVERY_N_BOOTS > 0 &&
                (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0);
-  display_show(rec, store_total(), bpct, full);
+  display_show(rec, store_total(), bpct, full, g_tz_off);
 #endif
 
   // 6) UYKU

@@ -10,6 +10,8 @@
 #include "lean_types.h"
 
 // Dashboard'u ciz. full=true tam yenileme (ghosting temizligi), false partial.
-void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc, bool full);
+// tz_off: gateway ACK'ten gelen timezone offset (sn, TR=10800) — saat yerel gosterilir.
+void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
+                  bool full, int32_t tz_off);
 
 #endif  // LEAN_DISPLAY_H
