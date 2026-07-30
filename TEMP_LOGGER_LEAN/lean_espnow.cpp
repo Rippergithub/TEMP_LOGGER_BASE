@@ -17,14 +17,16 @@ static uint8_t           s_gw_mac[6];            // ACK gelen kaynak MAC
 static bool              s_gw_known  = false;
 
 // ---- Callbacks -------------------------------------------------------------
-static void onSent(const uint8_t* mac, esp_now_send_status_t status) {
+// Core 3.x / IDF5.5: send_cb imzasi (const wifi_tx_info_t*, status)
+static void onSent(const wifi_tx_info_t* info, esp_now_send_status_t status) {
+  (void)info;
   s_l2_ok   = (status == ESP_NOW_SEND_SUCCESS);
   s_l2_done = true;
 }
 
 static void parse_ack_json(const char* json, int len) {
   StaticJsonDocument<512> doc;
-  if (deserializeJson(doc, json, len) != DeserializeError::Ok) return;
+  if (deserializeJson(doc, json, len) != DeserializationError::Ok) return;
   const char* typ = doc["type"] | "";
   if (typ[0] == 0) typ = doc["typ"] | "";
   if (strcmp(typ, "ACK") != 0) return;
