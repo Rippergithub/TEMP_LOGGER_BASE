@@ -3,19 +3,21 @@
 Karşılaştırma: `TEMP_LOGGER_LEAN/` ↔ `Faydam_GTW202_TEMP` (tam sürüm, ~16.3K satır).
 LEAN bilinçli olarak hafiftir; aşağıdaki liste "neyin olmadığını" ve önem derecesini gösterir.
 
+> **Durum (L1.1.0):** 🔴 kritik maddelerin 2'si + 🟡'dan alarm **TAMAMLANDI** (aşağıda ✅).
+
 ## 🔴 İnterop açısından KRİTİK (gateway ile tam uyum için gerekebilir)
 
-| Konu | Tam firmware | LEAN | Not |
+| Konu | Tam firmware | LEAN | Durum |
 |---|---|---|---|
-| **Pairing / allowlist** | `PAIR_REQ/RESP/CONFIRM` mutual auth, MAC allowlist'e eklenir | ❌ yok (broadcast/fixed peer) | ⚠️ Gateway allowlist **zorunlu** ise, bilinmeyen MAC'ten gelen **binary** paket DROP edilir. LEAN'in MAC'i gateway'de allowlist'e elle eklenmeli **veya** PAIR_REQ akışı eklenmeli. (Allowlist boşsa sorun yok.) |
-| **ACK `settings` uygulama** | `t_low/t_high/h_low/h_high`, `cal_off`, `cal_ts` ACK'ten alınır | ❌ sadece `sleep`/`unix`/`off`/`special_cmd` | Alarm eşikleri ve kalibrasyon offset'i gelmiyor |
-| **Anti-replay boot_cnt kalıcılığı** | boot_cnt NVS'te kalıcı | ⚠️ `g_boot_count` RTC'de (güç kesilince sıfırlanır) | Güç tam kesilirse boot_cnt sıfırlanır → gateway ilk paketleri "stale" görebilir (grace period genelde kurtarır) |
+| **Pairing / allowlist** | `PAIR_REQ/RESP/CONFIRM` mutual auth | `espnow_pair()` PAIR_REQ (pmk_fpr+pid_h+pmk_ver), RTC `g_paired` | ✅ **EKLENDİ (L1.1.0)** — CONFIRM/mutual auth atlandı (gateway PAIR_REQ'te allowlist'liyor) |
+| **ACK `settings` uygulama** | `t_low/t_high/h_low/h_high`, `cal_off`, `cal_ts` | `AckResult` + RTC'ye alınır, `cal_off` ölçüme uygulanır | ✅ **EKLENDİ (L1.1.0)** |
+| **Anti-replay boot_cnt kalıcılığı** | boot_cnt NVS'te kalıcı | ⚠️ `g_boot_count` RTC'de (güç kesilince sıfırlanır) | ⬜ açık — grace period genelde kurtarır (istenirse NVS'e alınır) |
 
 ## 🟡 Fonksiyonel eksik (isteğe bağlı — kullanım senaryona göre)
 
 | Modül / özellik | Tam firmware | LEAN |
 |---|---|---|
-| **Alarm mantığı** | eşik aşımı + histerezis + footer "ALARM" + buzzer + snooze (`AlarmNotificationFlow`) | ❌ yok (footer'da statik) |
+| **Alarm mantığı** | eşik aşımı + histerezis + footer "ALARM" + buzzer + snooze (`AlarmNotificationFlow`) | ✅ **EKLENDİ (L1.1.0)** — eşik+histerezis, EPD `! ALARM !`/footer, status=OUT_OF_RANGE. (buzzer/snooze yok) |
 | **Smart sleep** | dinamik uyku aralığı (sıcaklık riskine göre) | ❌ sabit `sleep_sec` |
 | **Kademeli güç** | düşük pil / limp mode / güvenli kapanış %'leri (`PowerManager`) | ⚠️ sadece %20 flash eşiği |
 | **EMA damping / core sim** | kan torbası simülasyonu, T90 (`SensorManager`) | ❌ ham ölçüm |
@@ -53,8 +55,9 @@ LEAN bilinçli olarak hafiftir; aşağıdaki liste "neyin olmadığını" ve ön
 | `SensorManager` (TH09C okuma) | `.ino` measure() |
 | BC (Birth Certificate) | `espnow_send_bc` (minimal) |
 
-## Öneri (öncelik sırası)
-1. **Pairing/allowlist** — gateway allowlist açıksa LEAN'in verisi düşer; ya MAC'i gateway'e ekle ya PAIR_REQ akışını LEAN'e ekleyelim.
-2. **ACK settings** — alarm eşikleri + cal_off'u ACK'ten alıp uygula (küçük ek).
-3. **Alarm mantığı** — eşik aşımında footer/flag (buzzer opsiyonel).
-4. Diğerleri senaryona göre.
+## Öneri (öncelik sırası) — durum
+1. ✅ **Pairing/allowlist** — EKLENDİ (L1.1.0)
+2. ✅ **ACK settings** (eşikler + cal_off) — EKLENDİ (L1.1.0)
+3. ✅ **Alarm mantığı** (eşik+histerezis, EPD) — EKLENDİ (L1.1.0)
+4. ⬜ Kalanlar senaryona göre: smart sleep, kademeli güç (limp/shutdown), bulk data,
+     boot_cnt NVS kalıcılığı, buzzer/snooze, çok dil, ekstra EPD ekranları.
