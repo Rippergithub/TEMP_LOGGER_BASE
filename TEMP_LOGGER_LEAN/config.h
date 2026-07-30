@@ -57,6 +57,7 @@
 // AES-GCM anahtar turetme (Gateway ile AYNI — espnow-protocol §AES-GCM)
 //   PMK = SHA-256(PROJECT_ID + PMK_SALT)[:16]
 #define ESPNOW_PMK_SALT         "_FYDM_PMK_SALT_V1"
+#define ESPNOW_PMK_DERIVATION_VERSION 1   // gateway ile AYNI (PAIR_REQ pmk_ver)
 #define GCM_IV_LEN              12
 #define GCM_TAG_LEN             16
 

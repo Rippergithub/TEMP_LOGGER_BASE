@@ -24,6 +24,7 @@
 void   crypto_init();               // PMK turet + kendi MAC'ini oku (idempotent)
 bool   crypto_selftest();           // PMK'yi kanonik test vektoruyle dogrula
 String crypto_pmk_hex();
+String crypto_pmk_fpr8();           // SHA256(PMK)[0:4] 8-hex (PAIR_REQ pmk_fpr; gateway ile ayni)
 
 // plaintext -> frame.  Donus: cerceve uzunlugu; hata halinde 0.
 size_t crypto_encrypt(const uint8_t* plaintext, size_t len,

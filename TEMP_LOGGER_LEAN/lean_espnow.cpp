@@ -13,6 +13,7 @@ static const uint8_t BCAST[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 static volatile bool     s_l2_done   = false;   // donanim ACK (send_cb) geldi
 static volatile bool     s_l2_ok     = false;
 static volatile bool     s_app_ack   = false;   // uygulama ACK (recv_cb) geldi
+static volatile bool     s_paired    = false;   // PAIR_RESP alindi
 static AckResult         s_ack;                  // recv_cb doldurur
 static uint8_t           s_gw_mac[6];            // ACK gelen kaynak MAC
 static bool              s_gw_known  = false;
@@ -30,6 +31,7 @@ static void parse_ack_json(const char* json, int len) {
   if (deserializeJson(doc, json, len) != DeserializationError::Ok) return;
   const char* typ = doc["type"] | "";
   if (typ[0] == 0) typ = doc["typ"] | "";
+  if (strcmp(typ, "PAIR_RESP") == 0) { s_paired = true; return; }  // eslesme onayi
   if (strcmp(typ, "ACK") != 0) return;
 
   uint32_t unix_v = doc["unix"] | 0UL;
@@ -184,6 +186,42 @@ bool espnow_send_bc(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
   bool ok = send_frame(frame, n);
   DEBUG_PRINT("[ESPNOW] BC gonderim="); DEBUG_PRINTLN(ok ? "OK" : "FAIL");
   return ok;
+}
+
+bool espnow_is_paired() { return s_paired; }
+
+// PAIR_REQ gonderir (gateway allowlist'e eklesin diye). Gateway pmk_fpr+pid_h+pmk_ver
+// dogrulayinca PAIR_RESP yollar ve MAC'i allowlist'e ekler. PAIR_RESP gelmese bile
+// PAIR_REQ ulastiysa gateway allowlist'ler; yine de kisa sure bekleyip teyit arariz.
+bool espnow_pair(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
+  StaticJsonDocument<256> doc;
+  doc["type"]    = "PAIR_REQ";
+  doc["pid"]     = PROJECT_ID;
+  doc["pid_h"]   = (uint32_t)PROJECT_ID_HASH;
+  doc["pmk_ver"] = ESPNOW_PMK_DERIVATION_VERSION;
+  doc["pmk_fpr"] = crypto_pmk_fpr8();
+  doc["uid"]     = uid;
+  doc["challenge"] = (uint32_t)esp_random();
+  char json[256];
+  size_t jn = serializeJson(doc, json, sizeof(json));
+
+  uint8_t frame[GCM_HDR_LEN + GCM_TAG_LEN + 256];
+  size_t n;
+#if ENABLE_ENCRYPTION
+  n = crypto_encrypt((const uint8_t*)json, jn, boot_cnt, nonce, frame, sizeof(frame));
+#else
+  memcpy(frame, json, jn); n = jn;
+#endif
+  if (n == 0) return false;
+
+  s_paired = false;
+  for (int r = 0; r < 2 && !s_paired; r++) {
+    send_frame(frame, n);
+    uint32_t t0 = millis();
+    while (!s_paired && (millis() - t0) < 700) delay(20);
+  }
+  DEBUG_PRINT("[PAIR] PAIR_REQ gonderildi, resp="); DEBUG_PRINTLN(s_paired ? "OK" : "yok(grace)");
+  return s_paired;
 }
 
 #if ENABLE_OTA

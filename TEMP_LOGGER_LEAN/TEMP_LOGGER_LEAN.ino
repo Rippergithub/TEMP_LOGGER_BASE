@@ -43,6 +43,7 @@ RTC_DATA_ATTR static uint32_t g_pkt_counter  = 0;
 RTC_DATA_ATTR static uint32_t g_last_unix    = 0;   // son senkron gateway zamani (UTC)
 RTC_DATA_ATTR static int32_t  g_tz_off       = 10800; // timezone offset (sn), ACK 'off' (TR varsayilan +3s)
 RTC_DATA_ATTR static uint32_t g_sleep_sec    = DEFAULT_SLEEP_SEC;
+RTC_DATA_ATTR static bool     g_paired       = false;  // gateway allowlist eslesmesi (RTC'de kalici)
 
 static TH09C s_th09c;
 
@@ -140,6 +141,7 @@ static void make_uid(char* out, size_t cap) {
 // -----------------------------------------------------------------------------
 static void apply_ack(const AckResult& ack) {
   if (!ack.got_ack) return;
+  g_paired = true;   // ACK aliyorsak gateway bizi kabul ediyor -> tekrar PAIR_REQ gerekmez
   if (ack.unix_time > 0) {
     g_last_unix = ack.unix_time;
     g_tz_off = ack.tz_off;   // yerel saat offset'i (yalniz gecerli zaman senkronunda)
@@ -218,6 +220,13 @@ void setup() {
   bool current_sent = false;
   if (radio_ok) {
     AckResult ack; memset(&ack, 0, sizeof(ack));
+
+    // 2.5) PAIR: henuz eslesmediyse once PAIR_REQ (gateway allowlist binary paketi
+    //      dusurmesin). Basarisiz olsa da PAIR_REQ ulastiysa gateway allowlist'ler.
+    if (!g_paired) {
+      char uid[24]; make_uid(uid, sizeof(uid));
+      if (espnow_pair(uid, (uint16_t)g_boot_count, ++g_pkt_counter)) g_paired = true;
+    }
 
     // 3a) Once birikmis kayitlari bosalt (en eski -> yeni). Bir tanesi bile
     //     gonderilemezse dur; kalani buffer'da kalsin (baglanti yok demektir).

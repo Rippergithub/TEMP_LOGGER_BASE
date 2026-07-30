@@ -27,6 +27,15 @@ String crypto_pmk_hex() {
   return String(hex);
 }
 
+String crypto_pmk_fpr8() {
+  crypto_init();
+  uint8_t h[32];
+  mbedtls_sha256(s_pmk, 16, h, 0);       // gateway gatewayPmkFingerprint8 ile ayni
+  char out[9];
+  snprintf(out, sizeof(out), "%02x%02x%02x%02x", h[0], h[1], h[2], h[3]);
+  return String(out);
+}
+
 bool crypto_selftest() {
   bool ok = (crypto_pmk_hex() == "1680e9159118feb685a24c7e1e78bba3");
   DEBUG_PRINT("[CRYPTO] selftest="); DEBUG_PRINTLN(ok ? "OK" : "FAIL (PMK mismatch!)");
