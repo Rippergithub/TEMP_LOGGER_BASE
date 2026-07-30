@@ -46,6 +46,34 @@ git checkout -B claude/<branch-adi>
 git push -u origin claude/<branch-adi>
 ```
 
+## Her değişiklik sonrası çalıştırılacak terminal komutları
+
+Kural: **Her kod/dosya değişikliğinden sonra** aşağıdaki komutlar çalıştırılır ve
+kullanıcıya yazılır (stage → commit → push). Branch: `claude/esp32-c6-brownout-fix-dvon4z`.
+
+```bash
+# 1) Değişeni gör
+git status --short
+git diff
+
+# 2) Stage + commit (açıklayıcı mesaj)
+git add <değişen-yollar>        # veya: git add -A
+git commit -m "<ne değişti kısa açıklama>"
+
+# 3) Push (ağ hatasında 2s,4s,8s,16s backoff ile 4 deneme)
+git push -u origin claude/esp32-c6-brownout-fix-dvon4z
+```
+
+Tek satırlık pratik (commit + retry'li push):
+
+```bash
+git add -A && git commit -m "<mesaj>" && \
+for i in 1 2 3 4; do git push -u origin claude/esp32-c6-brownout-fix-dvon4z && break || sleep $((2**i)); done
+```
+
+> Not: PR yalnızca kullanıcı açıkça isterse oluşturulur. Bu remote oturumda push
+> git proxy üzerinden gider; başka bir branch'e push edilmez.
+
 ## Repo upload komutları (yeni repo oluştur + ilk push)
 
 Yerelde yeni bir repo başlatıp GitHub'a yüklemek için:
