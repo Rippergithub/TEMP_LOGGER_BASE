@@ -1,136 +1,162 @@
 #include "lean_store.h"
+#include <LittleFS.h>
 #include <Preferences.h>
 #include <string.h>
 
-// -----------------------------------------------------------------------------
-//  RTC RAM ring buffer — deep-sleep boyunca korunur.
-// -----------------------------------------------------------------------------
-RTC_DATA_ATTR static SensorRecord rtc_buf[RTC_BUF_MAX];
-RTC_DATA_ATTR static uint16_t     rtc_head;   // en eski kaydin indeksi
-RTC_DATA_ATTR static uint16_t     rtc_count;
-RTC_DATA_ATTR static uint32_t     rtc_magic;  // 0xLEAN ilk boot tespiti
+// =============================================================================
+//  Tiered buffer:
+//    RTC RAM ring  -> hizli tampon (deep-sleep'te korunur, flash asinmasi yok)
+//    LittleFS file -> kalici tampon (30+ gun; guc kesilse de kalir)
+//
+//  Akis: kayitlar once RTC'ye; RTC dolunca TUM RTC batch halinde LittleFS'e
+//  eklenir (append). Pil dusukse kayit dogrudan LittleFS'e gider. Drain sirasi:
+//  once LittleFS (eski), sonra RTC (yeni).
+//
+//  LittleFS dosyasi: ardisik 16B SensorRecord. Gonderilmis kayitlar bastan
+//  "okuma imleci" (f_read) ile tuketilir; imlec NVS'te (dusuk asinma, wake
+//  basina 1 yazim). Dosya tamamen bosalinca truncate; imlec buyuyunce compaction.
+// =============================================================================
 
+// ---- RTC RAM ring -----------------------------------------------------------
+RTC_DATA_ATTR static SensorRecord rtc_buf[RTC_BUF_MAX];
+RTC_DATA_ATTR static uint16_t     rtc_head;
+RTC_DATA_ATTR static uint16_t     rtc_count;
+RTC_DATA_ATTR static uint32_t     rtc_magic;
 #define RTC_MAGIC 0x1EA5F00DUL
 
-// -----------------------------------------------------------------------------
-//  FLASH (NVS) buffer — RAM aynasi + Preferences blob.
-// -----------------------------------------------------------------------------
-static SensorRecord flash_buf[FLASH_BUF_MAX];
-static uint16_t     flash_head;
-static uint16_t     flash_count;
-static bool         flash_dirty;
+// ---- LittleFS durable tier --------------------------------------------------
+static bool     fs_ok    = false;
+static uint32_t f_count  = 0;   // dosyadaki toplam kayit
+static uint32_t f_read   = 0;   // bastan tuketilmis (gonderilmis) kayit sayisi
+#define REC_SZ  ((uint32_t)sizeof(SensorRecord))
+#define COMPACT_THRESHOLD 512   // f_read bu kadar olunca dosyayi sikistir
 
-static void flash_load() {
+static void nvs_put_read(uint32_t v) {
   Preferences p;
-  flash_head = 0; flash_count = 0; flash_dirty = false;
-  memset(flash_buf, 0, sizeof(flash_buf));
-  if (!p.begin(BUFFER_NVS_NAMESPACE, /*readOnly=*/true)) return;
-  uint16_t cnt = p.getUShort("cnt", 0);
-  if (cnt > FLASH_BUF_MAX) cnt = FLASH_BUF_MAX;
-  if (cnt > 0) {
-    p.getBytes("recs", flash_buf, (size_t)cnt * sizeof(SensorRecord));
-    flash_count = cnt;
+  if (p.begin(BUFFER_NVS_NAMESPACE, false)) { p.putULong("frd", v); p.end(); }
+}
+static uint32_t nvs_get_read() {
+  Preferences p; uint32_t v = 0;
+  if (p.begin(BUFFER_NVS_NAMESPACE, true)) { v = p.getULong("frd", 0); p.end(); }
+  return v;
+}
+
+static void fs_load() {
+  fs_ok = LittleFS.begin(true);   // true = gerekirse formatla
+  f_count = 0; f_read = 0;
+  if (!fs_ok) { DEBUG_PRINTLN("[STORE] LittleFS mount FAIL"); return; }
+  File f = LittleFS.open(FLASH_BUF_PATH, "r");
+  if (f) { f_count = (uint32_t)(f.size() / REC_SZ); f.close(); }
+  f_read = nvs_get_read();
+  if (f_read > f_count) f_read = f_count;
+}
+
+// Gonderilmis kayitlari fiziksel olarak at (dosyayi bastan yeniden yaz).
+static void fs_compact() {
+  if (!fs_ok || f_read == 0) return;
+  File in = LittleFS.open(FLASH_BUF_PATH, "r");
+  if (!in) return;
+  File out = LittleFS.open("/lbuf.tmp", "w");
+  if (!out) { in.close(); return; }
+  in.seek(f_read * REC_SZ);
+  uint8_t chunk[REC_SZ * 16];
+  size_t n;
+  while ((n = in.read(chunk, sizeof(chunk))) > 0) out.write(chunk, n);
+  in.close(); out.close();
+  LittleFS.remove(FLASH_BUF_PATH);
+  LittleFS.rename("/lbuf.tmp", FLASH_BUF_PATH);
+  f_count -= f_read;
+  f_read = 0;
+  nvs_put_read(0);
+  DEBUG_PRINT("[STORE] compact -> count="); DEBUG_PRINTLN(f_count);
+}
+
+static void fs_append(const SensorRecord& rec) {
+  if (!fs_ok) return;
+  // Cap: doluysa once tuketileni sikistir, hala doluysa en eskiyi mantiksal dusur
+  if ((f_count - f_read) >= FLASH_CAP_RECORDS) {
+    if (f_read > 0) fs_compact();
+    if ((f_count - f_read) >= FLASH_CAP_RECORDS) { f_read++; }  // drop-oldest
   }
-  p.end();
+  File f = LittleFS.open(FLASH_BUF_PATH, "a");
+  if (!f) { DEBUG_PRINTLN("[STORE] append open FAIL"); return; }
+  f.write((const uint8_t*)&rec, REC_SZ);
+  f.close();
+  f_count++;
 }
 
-static void flash_commit() {
-  if (!flash_dirty) return;
-  // RAM aynasini bas-hizali (head=0) normalize ederek yaz.
-  static SensorRecord tmp[FLASH_BUF_MAX];
-  for (uint16_t i = 0; i < flash_count; i++)
-    tmp[i] = flash_buf[(flash_head + i) % FLASH_BUF_MAX];
-
-  Preferences p;
-  if (!p.begin(BUFFER_NVS_NAMESPACE, /*readOnly=*/false)) return;
-  p.putUShort("cnt", flash_count);
-  if (flash_count > 0)
-    p.putBytes("recs", tmp, (size_t)flash_count * sizeof(SensorRecord));
-  else
-    p.remove("recs");
-  p.end();
-
-  memcpy(flash_buf, tmp, (size_t)flash_count * sizeof(SensorRecord));
-  flash_head = 0;
-  flash_dirty = false;
+static bool fs_peek(SensorRecord* out) {
+  if (!fs_ok || (f_count - f_read) == 0) return false;
+  File f = LittleFS.open(FLASH_BUF_PATH, "r");
+  if (!f) return false;
+  f.seek(f_read * REC_SZ);
+  bool ok = (f.read((uint8_t*)out, REC_SZ) == (int)REC_SZ);
+  f.close();
+  return ok;
 }
 
-static void flash_push(const SensorRecord& rec) {
-  if (flash_count >= FLASH_BUF_MAX) {            // dolu -> en eskiyi dusur
-    flash_head = (flash_head + 1) % FLASH_BUF_MAX;
-    flash_count--;
+static void fs_remove_oldest() {
+  if (!fs_ok || (f_count - f_read) == 0) return;
+  f_read++;
+  if (f_read >= f_count) {           // tamamen bosaldi -> dosyayi sifirla
+    LittleFS.remove(FLASH_BUF_PATH);
+    f_count = 0; f_read = 0;
+    nvs_put_read(0);
+    return;
   }
-  uint16_t tail = (flash_head + flash_count) % FLASH_BUF_MAX;
-  flash_buf[tail] = rec;
-  flash_count++;
-  flash_dirty = true;
+  nvs_put_read(f_read);
+  if (f_read >= COMPACT_THRESHOLD) fs_compact();
 }
 
+// ---- RTC ring ----------------------------------------------------------------
 static void rtc_push(const SensorRecord& rec) {
-  if (rtc_count >= RTC_BUF_MAX) {
-    rtc_head = (rtc_head + 1) % RTC_BUF_MAX;
-    rtc_count--;
-  }
-  uint16_t tail = (rtc_head + rtc_count) % RTC_BUF_MAX;
-  rtc_buf[tail] = rec;
+  if (rtc_count >= RTC_BUF_MAX) { rtc_head = (rtc_head + 1) % RTC_BUF_MAX; rtc_count--; }
+  rtc_buf[(rtc_head + rtc_count) % RTC_BUF_MAX] = rec;
   rtc_count++;
 }
 
-// -----------------------------------------------------------------------------
-//  Public API
-// -----------------------------------------------------------------------------
+// ---- Public API --------------------------------------------------------------
 void store_init() {
-  if (rtc_magic != RTC_MAGIC) {   // cold boot / RTC RAM temiz
-    rtc_head = 0; rtc_count = 0; rtc_magic = RTC_MAGIC;
-    DEBUG_PRINTLN("[STORE] RTC RAM cold-init");
-  }
-  flash_load();
+  if (rtc_magic != RTC_MAGIC) { rtc_head = 0; rtc_count = 0; rtc_magic = RTC_MAGIC;
+                                DEBUG_PRINTLN("[STORE] RTC RAM cold-init"); }
+  fs_load();
   DEBUG_PRINT("[STORE] init rtc="); DEBUG_PRINT(rtc_count);
-  DEBUG_PRINT(" flash="); DEBUG_PRINTLN(flash_count);
+  DEBUG_PRINT(" flash="); DEBUG_PRINT(f_count - f_read);
+  DEBUG_PRINT("/"); DEBUG_PRINTLN(FLASH_CAP_RECORDS);
 }
 
+static uint16_t clamp16(uint32_t v) { return (v > 0xFFFF) ? 0xFFFF : (uint16_t)v; }
 uint16_t store_rtc_count()   { return rtc_count; }
-uint16_t store_flash_count() { return flash_count; }
-uint16_t store_total()       { return rtc_count + flash_count; }
+uint16_t store_flash_count() { return clamp16(f_count - f_read); }
+uint16_t store_total()       { return clamp16((uint32_t)rtc_count + (f_count - f_read)); }
+
+void store_migrate_to_flash() {
+  if (rtc_count == 0) return;
+  DEBUG_PRINT("[STORE] RTC->FLASH batch: "); DEBUG_PRINTLN(rtc_count);
+  while (rtc_count > 0) {
+    fs_append(rtc_buf[rtc_head]);
+    rtc_head = (rtc_head + 1) % RTC_BUF_MAX;
+    rtc_count--;
+  }
+}
 
 void store_push(const SensorRecord& rec, uint8_t batt_perc) {
   if (batt_perc <= BATT_LOW_PERSIST_PERC) {
-    DEBUG_PRINTLN("[STORE] push -> FLASH (dusuk pil)");
-    flash_push(rec);
-    flash_commit();
+    DEBUG_PRINTLN("[STORE] push -> LittleFS (dusuk pil)");
+    fs_append(rec);
   } else {
-    DEBUG_PRINTLN("[STORE] push -> RTC RAM");
+    if (rtc_count >= RTC_BUF_MAX) store_migrate_to_flash();  // RTC dolu -> batch spill
     rtc_push(rec);
   }
 }
 
 bool store_peek_oldest(SensorRecord* out) {
-  if (flash_count > 0) { *out = flash_buf[flash_head]; return true; }   // flash once
-  if (rtc_count > 0)   { *out = rtc_buf[rtc_head];     return true; }
+  if (fs_peek(out)) return true;                 // once LittleFS (eski)
+  if (rtc_count > 0) { *out = rtc_buf[rtc_head]; return true; }
   return false;
 }
 
 void store_remove_oldest() {
-  if (flash_count > 0) {
-    flash_head = (flash_head + 1) % FLASH_BUF_MAX;
-    flash_count--;
-    flash_dirty = true;
-    flash_commit();
-    return;
-  }
-  if (rtc_count > 0) {
-    rtc_head = (rtc_head + 1) % RTC_BUF_MAX;
-    rtc_count--;
-  }
-}
-
-void store_migrate_to_flash() {
-  if (rtc_count == 0) return;
-  DEBUG_PRINT("[STORE] RTC->FLASH migrate: "); DEBUG_PRINTLN(rtc_count);
-  while (rtc_count > 0) {
-    flash_push(rtc_buf[rtc_head]);
-    rtc_head = (rtc_head + 1) % RTC_BUF_MAX;
-    rtc_count--;
-  }
-  flash_commit();
+  if ((f_count - f_read) > 0) { fs_remove_oldest(); return; }
+  if (rtc_count > 0) { rtc_head = (rtc_head + 1) % RTC_BUF_MAX; rtc_count--; }
 }

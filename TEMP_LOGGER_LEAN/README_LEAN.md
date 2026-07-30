@@ -13,9 +13,21 @@ hafif türevi. Tek iş: **Uyan → Ölç → Gönder → (olmazsa) Sakla → Uyu
 7. EPD güncelle (her N boot'ta full, arada partial), radyo kapat, deep sleep
 
 ## Tiered offline buffer (kullanıcı kararı)
-- **Pil normal** → `RTC_DATA_ATTR` ring buffer (`RTC_BUF_MAX=120`), deep-sleep'te korunur, flash aşınması yok
-- **Pil bitmeye yakın (≤%20)** → NVS/FLASH (`FLASH_BUF_MAX=400`), güç kesilse de kalıcı; ayrıca eşiğin altına düşünce RTC'deki kayıtlar flash'a taşınır
-- Drain sırası: önce FLASH (kalıcı/eski), sonra RTC
+- **RTC RAM ring** (`RTC_BUF_MAX=120`) → hızlı tampon; deep-sleep'te korunur, flash aşınması yok
+- **LittleFS dosyası** (`FLASH_CAP_RECORDS=5000`) → kalıcı tampon, **30+ gün** (10dk periyot → 34.7 gün); güç kesilse de kalır
+- RTC dolunca tüm RTC **batch** halinde LittleFS'e taşınır (online'da flash'a hiç yazılmaz → aşınma yok). Pil ≤%20 ise kayıt doğrudan LittleFS'e
+- Drain sırası: önce LittleFS (eski), sonra RTC (yeni)
+- Okuma imleci NVS'te (`frd`); dosya bitince truncate, imleç büyüyünce compaction
+
+### Kapasite hesabı (10 dk periyot)
+| Süre | Kayıt | Boyut (16B/kayıt) |
+|---|---|---|
+| 1 gün | 144 | 2.3 KB |
+| 30 gün | 4320 | ~68 KB |
+| CAP (5000) | 5000 | ~78 KB (~34.7 gün) |
+
+⚠️ **Partition:** LittleFS/SPIFFS içeren şema seçilmeli — Arduino IDE Tools →
+"Partition Scheme: Default 4MB with spiffs" (varsayılan ~1.5MB LittleFS; 78KB rahat sığar).
 
 ## Şifreleme (kullanıcı kararı: KALSIN) — Gateway `Faydam_GTW202_ESPGTW` ile eşlendi
 Gateway kaynağından (espnow_security.cpp + docs/GATEWAY_SPEC.md + SECURITY.md) **doğrulanan** kontrat:

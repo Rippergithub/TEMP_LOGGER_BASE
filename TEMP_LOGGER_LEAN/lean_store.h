@@ -3,14 +3,14 @@
 // =============================================================================
 //  Tiered Offline Buffer — LEAN
 //
-//  Pil NORMAL (> BATT_LOW_PERSIST_PERC)  -> RTC RAM ring buffer (hizli, asinma yok)
-//  Pil BITMEYE YAKIN (<= esik)           -> FLASH (NVS), guc kesilse de kalici
+//  RTC RAM ring   -> hizli tampon (deep-sleep'te korunur, asinma yok)
+//  LittleFS file  -> kalici tampon (30+ gun; guc kesilse de kalir)
 //
-//  RTC RAM deep-sleep boyunca korunur ama guc TAMAMEN kesilirse silinir; bu yuzden
-//  pil dusukken kayitlar flash'a yazilir. Ayrica pil esigin altina dustugunde
-//  RTC'deki birikmis kayitlar da flash'a tasinir (store_migrate_to_flash).
+//  Kayitlar once RTC'ye; RTC dolunca TUM RTC batch halinde LittleFS'e tasinir.
+//  Pil <= BATT_LOW_PERSIST_PERC ise kayit dogrudan LittleFS'e gider (guc-kesilme
+//  guvenligi). Drain sirasi: once LittleFS (eski), sonra RTC (yeni).
 //
-//  Drain sirasi: once FLASH (kalici, muhtemelen daha eski), sonra RTC.
+//  Kapasite: 10 dk periyotta 30 gun = 4320 kayit; CAP=FLASH_CAP_RECORDS (5000).
 // =============================================================================
 #include <Arduino.h>
 #include "lean_types.h"

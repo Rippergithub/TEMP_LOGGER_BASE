@@ -52,12 +52,17 @@
 #define GCM_TAG_LEN             16
 
 // -----------------------------------------------------------------------------
-//  Offline Buffer (Tiered): pil normalse RTC RAM, bitmeye yakinsa FLASH
+//  Offline Buffer (Tiered): RTC RAM (hizli) + LittleFS (kalici, 30+ gun)
+//  RTC dolunca / pil dusukce batch halinde LittleFS'e tasinir.
+//  Hedef: 10 dk periyotta 30 gun = 4320 kayit (~68KB). CAP 5000 ~ 34.7 gun.
+//  ⚠️ Partition semasi LittleFS/SPIFFS icermeli: Arduino IDE Tools ->
+//     "Partition Scheme: Default 4MB with spiffs" (veya littlefs'li herhangi biri).
 // -----------------------------------------------------------------------------
-#define RTC_BUF_MAX             120     // RTC RAM ring buffer kapasitesi (kayit)
-#define FLASH_BUF_MAX           400     // Flash (NVS) buffer kapasitesi (kayit)
-#define BUFFER_NVS_NAMESPACE    "lean_buf"
-#define BATT_LOW_PERSIST_PERC   20      // <= %20 ise buffer FLASH'a (guc kesilirse kaybolmasin)
+#define RTC_BUF_MAX             120     // RTC RAM ring (hizli tampon; 10dk'da ~20 saat)
+#define FLASH_CAP_RECORDS       5000    // LittleFS kalici tampon kapasitesi (~34.7 gun)
+#define FLASH_BUF_PATH          "/lbuf.bin"        // LittleFS ikili kayit dosyasi
+#define BUFFER_NVS_NAMESPACE    "lean_buf"         // okuma imleci (frd) burada
+#define BATT_LOW_PERSIST_PERC   20      // <= %20 ise kayit dogrudan LittleFS'e (guc-kesilirse guvenli)
 
 // -----------------------------------------------------------------------------
 //  Batarya (Saft LS14500) — BAT_ADC_PIN üzerinden okuma
