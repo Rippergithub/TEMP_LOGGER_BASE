@@ -43,6 +43,17 @@ static void parse_ack_json(const char* json, int len) {
   s_ack.tz_off      = doc["off"] | 0;
   s_ack.special_cmd = doc["special_cmd"] | 0;
   s_ack.op_mode     = doc["op_mode"] | 255;
+
+  if (doc.containsKey("settings")) {
+    JsonObject s = doc["settings"];
+    s_ack.has_settings = true;
+    s_ack.t_low  = s["t_low"]  | 0.0f;
+    s_ack.t_high = s["t_high"] | 0.0f;
+    s_ack.h_low  = s["h_low"]  | 0.0f;
+    s_ack.h_high = s["h_high"] | 0.0f;
+    s_ack.cal_off= s["cal_off"]| 0.0f;
+    s_ack.cal_ts = s["cal_ts"] | 0UL;
+  }
   s_app_ack = true;
 }
 

@@ -16,6 +16,12 @@ typedef struct {
   int32_t  tz_off;          // timezone offset saniye
   uint8_t  special_cmd;     // 0x00 NOP / 0xBC BC-iste / ...
   uint8_t  op_mode;
+  // --- settings alt-nesnesi (varsa) ---
+  bool     has_settings;
+  float    t_low, t_high;   // sicaklik alarm esikleri (°C)
+  float    h_low, h_high;   // nem alarm esikleri (%)
+  float    cal_off;         // kalibrasyon offset (°C)
+  uint32_t cal_ts;          // kalibrasyon sertifika ts
 } AckResult;
 
 // WiFi STA + ESP-NOW baslat (CH6, PMK, broadcast/gateway peer). false = hata.

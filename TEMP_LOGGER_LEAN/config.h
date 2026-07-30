@@ -121,6 +121,14 @@
 #define S_STATUS_HW_FAULT       3
 #define S_STATUS_OUT_OF_RANGE   4
 
+// --- Alarm limitleri (ACK settings gelmezse varsayilan) ---
+#define T_LOW_LIMIT   -100.0f
+#define T_HIGH_LIMIT   100.0f
+#define H_LOW_LIMIT    0.0f
+#define H_HIGH_LIMIT   100.0f
+#define T_HYSTERESIS   0.5f     // salinim onleme
+#define H_HYSTERESIS   2.0f
+
 // Parametre ID'leri (espnow-protocol)
 #define PARAM_TEMP   2
 #define PARAM_HUM    3

@@ -44,6 +44,12 @@ RTC_DATA_ATTR static uint32_t g_last_unix    = 0;   // son senkron gateway zaman
 RTC_DATA_ATTR static int32_t  g_tz_off       = 10800; // timezone offset (sn), ACK 'off' (TR varsayilan +3s)
 RTC_DATA_ATTR static uint32_t g_sleep_sec    = DEFAULT_SLEEP_SEC;
 RTC_DATA_ATTR static bool     g_paired       = false;  // gateway allowlist eslesmesi (RTC'de kalici)
+// ACK settings (gateway'den; RTC'de kalici). Varsayilanlar config alarm limitleri.
+RTC_DATA_ATTR static float    g_t_low        = T_LOW_LIMIT;
+RTC_DATA_ATTR static float    g_t_high       = T_HIGH_LIMIT;
+RTC_DATA_ATTR static float    g_h_low        = H_LOW_LIMIT;
+RTC_DATA_ATTR static float    g_h_high       = H_HIGH_LIMIT;
+RTC_DATA_ATTR static float    g_cal_off      = 0.0f;
 
 static TH09C s_th09c;
 
@@ -117,6 +123,8 @@ static SensorRecord measure() {
   if (m > -120.0f) r.temp = m;
 #endif
 
+  r.temp += g_cal_off;   // kalibrasyon offset (ACK settings)
+
   uint16_t mv = read_batt_mv();
   r.batt_mv = mv;
   // Zaman: senkron varsa yaklasik simdiki epoch, yoksa 0 (gateway doldurur)
@@ -151,6 +159,13 @@ static void apply_ack(const AckResult& ack) {
   if (ack.sleep_sec  > 0) {
     g_sleep_sec = constrain(ack.sleep_sec, MIN_SLEEP_SEC, MAX_SLEEP_SEC);
     DEBUG_PRINT("[ACK] sleep_sec="); DEBUG_PRINTLN(g_sleep_sec);
+  }
+  if (ack.has_settings) {   // gateway alarm esikleri + kalibrasyon offset
+    g_t_low = ack.t_low; g_t_high = ack.t_high;
+    g_h_low = ack.h_low; g_h_high = ack.h_high;
+    g_cal_off = ack.cal_off;
+    DEBUG_PRINT("[ACK] settings t=["); DEBUG_PRINT(g_t_low); DEBUG_PRINT(",");
+    DEBUG_PRINT(g_t_high); DEBUG_PRINT("] cal_off="); DEBUG_PRINTLN(g_cal_off);
   }
   if (ack.special_cmd == 0xBC) {
     char uid[24]; make_uid(uid, sizeof(uid));
