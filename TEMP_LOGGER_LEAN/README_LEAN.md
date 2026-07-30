@@ -26,13 +26,16 @@ Gateway kaynağından (espnow_security.cpp + docs/GATEWAY_SPEC.md + SECURITY.md)
 - 16B TAG; `SensorDataMessage` struct gateway `espnow_protocol.h` ile **birebir** ✓
 - Anti-replay: `boot_cnt<son` veya (eşit boot_cnt && `nonce<=son`) → gateway DROP
 
-⚠️ **Tek doğrulanmamış nokta — çerçeve bayt sırası:** Header/TAG/CIPHERTEXT
-dizilişi + AAD, paylaşılan `EspNowCrypto` Arduino kütüphanesinde tanımlı ve o
-kütüphane gateway repo'sunda **vendor'lanmamış**. LEAN şu düzeni kullanıyor
-(dokümante kontrata göre en olası): `[boot_cnt:2][nonce:4][TAG:16][CT]`, AAD=header.
-Byte-exact garanti için `EspNowCrypto.h/.cpp`'yi içeren repoyu ekleyip
-`lean_crypto.cpp` yerine doğrudan onu çağırmak en sağlamı — düzen değişirse
-**sadece** `lean_crypto.cpp` + `config.h GCM_*` etkilenir.
+### Çerçeve düzeni — BYTE-EXACT (gerçek kütüphane vendor'landı)
+Tahmin kaldırıldı: ortak `EspNowCrypto.h/.cpp` bu klasöre kopyalandı ve
+`lean_crypto.cpp` doğrudan onu çağırıyor. Gateway + sensör ile aynı kaynak:
+```
+Çerçeve:  [0xAE magic:1][nonce_ctr LE:4][boot_cnt LE:2][CIPHERTEXT:N][GCM TAG:16]   (overhead 23B)
+IV (12B): [sender_mac:6][boot_cnt LE:2][nonce_ctr LE:4]
+AAD:      yok (NULL)
+```
+`crypto_selftest()` PMK'yi kanonik vektörle (`1680e9…bba3`) doğrular. `lean_crypto`
+artık yalnızca PMK türetimi + kendi MAC'i + kolay imza sağlayan ince bir sarmalayıcı.
 
 ## Dosyalar
 | Dosya | İş |
@@ -41,7 +44,8 @@ Byte-exact garanti için `EspNowCrypto.h/.cpp`'yi içeren repoyu ekleyip
 | `config.h` | Lean config (~150 satır) |
 | `lean_types.h` | `SensorRecord` (16B) + `SensorDataMessage` (binary paket) |
 | `lean_store.*` | Tiered RTC/FLASH buffer |
-| `lean_crypto.*` | AES-128-GCM (mbedtls) |
+| `lean_crypto.*` | PMK türetimi + `EspNowCrypto` sarmalayıcı |
+| `EspNowCrypto.*` | Ortak AES-128-GCM kütüphanesi (gateway/sensör ile aynı, vendor'landı) |
 | `lean_espnow.*` | init / send+ACK / BC |
 | `lean_display.*` | EPD dashboard (Waveshare GUI_Paint) |
 | `EPD.*`, `TH09C.*`, `Boardoza_MAX31865.*` | dev sürümden kopyalanan sürücüler |
