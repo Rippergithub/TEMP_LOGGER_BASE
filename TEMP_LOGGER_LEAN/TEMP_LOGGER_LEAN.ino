@@ -11,6 +11,21 @@
 //   6) EPD guncelle, radyoyu kapat, deep sleep
 //
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
+//  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
+// =============================================================================
+//  SURUM: L1.1.0            (config.h FW_VERSION ile ayni tutulmali)
+//  -----------------------------------------------------------------------------
+//  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.1.0  - Pairing/allowlist (PAIR_REQ), ACK settings (esikler+cal_off),
+//             alarm mantigi (histerezis) + EPD gosterimi
+//           - OTA katmani (ESP-NOW 0x10/0x11/0x12, Update.h + MD5)
+//           - Offline buffer NVS -> LittleFS (30+ gun, 10dk periyot)
+//           - EPD: GUI_Paint/Fonts vendor, dashboard duzeni, derece simgesi,
+//             timezone offset, alt bar bilgi donusumu (HW/FW/UID)
+//           - AES-GCM byte-exact (EspNowCrypto vendor), IV/cerceve gateway ile ayni
+//           - EPD pin fix (RES/DC OUTPUT), ilk boot FULL refresh
+//   L1.0.0  - Ilk LEAN: uyan->olc->gonder->sakla->uyu, ESP-NOW/AES-GCM,
+//             RTC/flash tiered buffer, EPD dashboard, brownout guc rayi
 // =============================================================================
 #include <Arduino.h>
 #include <Wire.h>

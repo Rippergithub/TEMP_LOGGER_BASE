@@ -6,6 +6,15 @@ Mimari/kripto/buffer ayrıntıları için `README_LEAN.md`.
 > Tüm komutlar **repo kökünden** (`TEMP_LOGGER_BASE/`) çalıştırılır; arduino-cli
 > sketch adını klasör yoluyla alır. Branch: `claude/esp32-c6-brownout-fix-dvon4z`.
 
+## ⚠️ KOŞUL: Sürüm + değişiklik günlüğü (her değişiklikte zorunlu)
+
+**Her kod değişikliğinden sonra**, commit'ten ÖNCE:
+1. `TEMP_LOGGER_LEAN.ino` başındaki **DEGISIKLIK GUNLUGU** bloğuna en üste yeni satır ekle.
+2. Anlamlı değişikliklerde **SURUM**'u artır (semver: LMAJOR.MINOR.PATCH).
+3. `config.h → FW_VERSION`'ı `.ino` başlığındaki sürümle **aynı** yap (ikisi senkron).
+
+> Sürüm şeması: `L<major>.<minor>.<patch>` — küçük düzeltme=patch, yeni özellik=minor.
+
 ## Her değişiklik sonrası çalıştırılacak terminal komutları
 
 ```bash

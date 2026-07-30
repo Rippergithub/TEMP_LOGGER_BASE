@@ -46,6 +46,16 @@ git checkout -B claude/<branch-adi>
 git push -u origin claude/<branch-adi>
 ```
 
+## ⚠️ KOŞUL: Sürüm + değişiklik günlüğü (her değişiklikte zorunlu)
+
+**Her kod değişikliğinden sonra**, commit'ten ÖNCE, ilgili sketch'in `*.ino` dosyasının
+**başına yorum bloğu** olarak sürüm + değişiklik günlüğü işaretlenir:
+1. `*.ino` başındaki **DEGISIKLIK GUNLUGU** bloğuna en üste yeni satır ekle.
+2. Anlamlı değişikliklerde **SURUM**'u artır (semver: `L<major>.<minor>.<patch>`).
+3. `config.h → FW_VERSION`'ı `.ino` başlığındaki sürümle **aynı** tut (senkron).
+
+> LEAN için referans: `TEMP_LOGGER_LEAN/TEMP_LOGGER_LEAN.ino` başlığı.
+
 ## Her değişiklik sonrası çalıştırılacak terminal komutları
 
 Kural: **Her kod/dosya değişikliğinden sonra** aşağıdaki komutlar çalıştırılır ve
