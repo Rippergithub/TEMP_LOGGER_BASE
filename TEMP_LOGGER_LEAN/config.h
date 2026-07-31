@@ -52,7 +52,10 @@
 #define ESPNOW_APP_ACK_TIMEOUT_MS 800   // uygulama ACK (JSON/binary) bekleme
 #define ESPNOW_SEND_RETRIES     2
 // Gateway MAC'i sifir ise broadcast ile aranir; ACK gelen adres peer olarak kaydedilir.
-#define GATEWAY_MAC             {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+// UNICAST FIX: broadcast'te L2 ACK olmadigindan gonderim "L2 ACK YOK" ile basarisiz
+// sayiliyor + gateway (3.9.0) broadcast DATA'yi islemiyor (rx:0). Gateway MAC'i sabitleyip
+// unicast'e geciyoruz -> gercek L2 ACK + dogrudan teslim. (Status'tan: 98:3D:AE:AC:1C:98)
+#define GATEWAY_MAC             {0x98, 0x3D, 0xAE, 0xAC, 0x1C, 0x98}
 
 // --- Adaptif TX Power (ACK RSSI'sine gore; tam firmware ile ayni esikler) ---
 #define ENABLE_ADAPTIVE_TX      true
