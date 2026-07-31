@@ -132,10 +132,22 @@ bool espnow_begin() {
 
 // Bir cerceve gonder. Unicast'te L2 ACK beklenir; broadcast'te L2 ACK YOKTUR
 // (yayin) -> gonderim kuyruklandiysa basarili say (yoksa broadcast kesif hic calismaz).
+// Hedef MAC peer tablosunda yoksa ekle (kesif sonrasi ogrenilen gateway MAC'i
+// begin'de eklenmemis olabilir -> unicast L2 ACK YOK sorununu cozer).
+static void ensure_peer(const uint8_t* mac) {
+  if (esp_now_is_peer_exist(mac)) return;
+  esp_now_peer_info_t p = {};
+  p.channel = ESPNOW_CHANNEL;
+  p.encrypt = false;
+  memcpy(p.peer_addr, mac, 6);
+  esp_now_add_peer(&p);
+}
+
 static bool send_frame(const uint8_t* frame, size_t n) {
   s_l2_done = false; s_l2_ok = false;
   bool bcast = !s_gw_known;
   const uint8_t* dest = bcast ? BCAST : s_gw_mac;
+  ensure_peer(dest);                       // hedef peer kayitli degilse ekle
   if (esp_now_send(dest, frame, n) != ESP_OK) return false;
   if (bcast) { delay(10); return true; }        // yayinda L2 ACK yok
   uint32_t t0 = millis();

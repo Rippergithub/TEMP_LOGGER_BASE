@@ -13,9 +13,13 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.5.2            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.5.3            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.5.3  - FIX: kesif sonrasi ogrenilen gateway MAC peer tablosuna eklenmiyordu
+//             -> unicast "L2 ACK YOK". send_frame artik ensure_peer ile hedefi ekler.
+//             (PAIR_RESP ile s_gw_known=true olunca veri gateway'e ulasip JSON ACK/
+//             saat gelir.)
 //   L1.5.2  - FIX (saat gorunmuyor kok neden): veri artik MINIFIED JSON ("typ":"D")
 //             gonderiliyor. Gateway binary veriye BINARY ACK donuyordu; LEAN sadece
 //             JSON ACK parse ettigi icin unix/settings/ota_pending hic okunamiyordu.
