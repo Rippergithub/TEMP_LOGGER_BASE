@@ -21,6 +21,9 @@ RTC_DATA_ATTR static int8_t rtc_tx_power = ESPNOW_MAX_TX_POWER;  // uyku boyunca
 #endif
 static uint8_t           s_gw_mac[6];            // ACK gelen kaynak MAC
 static bool              s_gw_known  = false;
+static bool              s_force_bcast = false;  // yeniden kesif: GATEWAY_MAC sabit olsa bile broadcast
+
+void espnow_set_force_broadcast(bool b) { s_force_bcast = b; }
 
 // ---- Callbacks -------------------------------------------------------------
 // Core 3.x / IDF5.5: send_cb imzasi (const wifi_tx_info_t*, status)
@@ -105,25 +108,29 @@ bool espnow_begin() {
   uint8_t gw[6] = GATEWAY_MAC;
   bool have_gw = false;
   for (int i = 0; i < 6; i++) if (gw[i] != 0) have_gw = true;
+  bool use_bcast = s_force_bcast || !have_gw;   // yeniden kesif -> broadcast'e dus
 
   esp_now_peer_info_t peer = {};
   peer.channel = ESPNOW_CHANNEL;
   peer.encrypt = false;                // HW sifreleme kapali; AES-GCM uygulama katmaninda
-  memcpy(peer.peer_addr, have_gw ? gw : BCAST, 6);
+  memcpy(peer.peer_addr, use_bcast ? BCAST : gw, 6);
   if (esp_now_add_peer(&peer) != ESP_OK) { DEBUG_PRINTLN("[ESPNOW] add_peer FAIL"); return false; }
-  memcpy(s_gw_mac, have_gw ? gw : BCAST, 6);
-  s_gw_known = have_gw;
+  memcpy(s_gw_mac, use_bcast ? BCAST : gw, 6);
+  s_gw_known = !use_bcast;
 
   DEBUG_PRINT("[ESPNOW] up ch="); DEBUG_PRINT(ESPNOW_CHANNEL);
-  DEBUG_PRINTLN(have_gw ? " (unicast)" : " (broadcast discovery)");
+  DEBUG_PRINTLN(use_bcast ? " (broadcast discovery)" : " (unicast)");
   return true;
 }
 
-// Bir cerceve gonder (varsa unicast gateway'e, yoksa broadcast). L2 ACK bekle.
+// Bir cerceve gonder. Unicast'te L2 ACK beklenir; broadcast'te L2 ACK YOKTUR
+// (yayin) -> gonderim kuyruklandiysa basarili say (yoksa broadcast kesif hic calismaz).
 static bool send_frame(const uint8_t* frame, size_t n) {
   s_l2_done = false; s_l2_ok = false;
-  const uint8_t* dest = s_gw_known ? s_gw_mac : BCAST;
+  bool bcast = !s_gw_known;
+  const uint8_t* dest = bcast ? BCAST : s_gw_mac;
   if (esp_now_send(dest, frame, n) != ESP_OK) return false;
+  if (bcast) { delay(10); return true; }        // yayinda L2 ACK yok
   uint32_t t0 = millis();
   while (!s_l2_done && (millis() - t0) < ESPNOW_L2_ACK_TIMEOUT_MS) delay(2);
   return s_l2_done && s_l2_ok;

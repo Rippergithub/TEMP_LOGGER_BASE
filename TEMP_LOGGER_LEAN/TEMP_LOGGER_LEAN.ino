@@ -13,9 +13,12 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.2.2            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.3.0            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.3.0  - Dayaniklilik: broadcast'te L2-ACK zorunlulugu kaldirildi (kesif calisir);
+//             ard arda ACK'siz cycle'da otomatik yeniden kesif (broadcast+PAIR,
+//             REDISCOVER_AFTER_FAILS); force-broadcast RTC bayragi
 //   L1.2.2  - EPD sag panel gercek temp_logger mantigi: SON KAYIT (last_payload_ts) /
 //             SON DATA / KAYIT (n); g_last_payload_ts RTC'de takip edilir
 //   L1.2.1  - EPD sag panel: gonderilemeyen olcum "SON KAYIT", gonderilen "SON DATA"
@@ -71,6 +74,8 @@ RTC_DATA_ATTR static float    g_h_high       = H_HIGH_LIMIT;
 RTC_DATA_ATTR static float    g_cal_off      = 0.0f;
 RTC_DATA_ATTR static bool     g_in_alarm     = false;  // histerezis durumu
 RTC_DATA_ATTR static uint32_t g_last_payload_ts = 0;   // son BASARIYLA gonderilen olcum zamani (getLastPayloadUnix karsiligi)
+RTC_DATA_ATTR static uint8_t  g_fail_streak     = 0;    // ard arda uygulama-ACK'siz cycle sayisi
+RTC_DATA_ATTR static bool     g_force_bcast     = false;// yeniden kesif: broadcast + PAIR
 
 static TH09C s_th09c;
 
@@ -265,10 +270,14 @@ void setup() {
   // Pil esigin altina dustuyse RTC'deki birikmis kayitlari kalici flash'a tasi
   if (bpct <= BATT_LOW_PERSIST_PERC) store_migrate_to_flash();
 
-  // 2) RADYO
+  // 2) RADYO — yeniden kesif gerekiyorsa broadcast'e dus
+#if ENABLE_ESPNOW
+  espnow_set_force_broadcast(g_force_bcast);
+#endif
   bool radio_ok = ENABLE_ESPNOW ? espnow_begin() : false;
 
   bool current_sent = false;
+  bool comm_ok = false;   // bu cyclede en az bir uygulama-ACK alindi mi (kesif sagligi)
   if (radio_ok) {
     AckResult ack; memset(&ack, 0, sizeof(ack));
 
@@ -286,6 +295,7 @@ void setup() {
     while (store_peek_oldest(&old)) {
       if (espnow_send_record(old, (uint16_t)g_boot_count, ++g_pkt_counter, &ack)) {
         store_remove_oldest();
+        if (ack.got_ack) comm_ok = true;
         apply_ack(ack);
         if (old.timestamp > g_last_payload_ts) g_last_payload_ts = old.timestamp;
         drained++;
@@ -300,7 +310,8 @@ void setup() {
     // 3b) Bu dongunun olcumunu gonder
     if (store_total() == 0) {
       current_sent = espnow_send_record(rec, (uint16_t)g_boot_count, ++g_pkt_counter, &ack);
-      if (current_sent) { apply_ack(ack);
+      if (current_sent) { if (ack.got_ack) comm_ok = true;
+                          apply_ack(ack);
                           if (rec.timestamp > g_last_payload_ts) g_last_payload_ts = rec.timestamp; }
       else --g_pkt_counter;
     }
@@ -311,6 +322,19 @@ void setup() {
     DEBUG_PRINTLN("[NET] gonderim yok -> buffer'a alindi");
     store_push(rec, bpct);
   }
+
+  // 4.3) Dayaniklilik: ard arda ACK'siz kalinirsa yeniden kesif (broadcast+PAIR).
+#if ENABLE_ESPNOW
+  if (radio_ok) {
+    if (comm_ok) {
+      g_fail_streak = 0;
+      if (g_force_bcast) { g_force_bcast = false; DEBUG_PRINTLN("[NET] kesif OK -> unicast'e don"); }
+    } else if (++g_fail_streak >= REDISCOVER_AFTER_FAILS) {
+      g_force_bcast = true; g_paired = false; g_fail_streak = 0;
+      DEBUG_PRINTLN("[NET] ard arda ACK yok -> yeniden kesif (broadcast+PAIR)");
+    }
+  }
+#endif
 
   // 4.4) Adaptif TX power — bu cyclede alinan ACK RSSI'sine gore ayarla
 #if ENABLE_ADAPTIVE_TX

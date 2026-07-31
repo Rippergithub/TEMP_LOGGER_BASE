@@ -38,6 +38,7 @@ bool espnow_send_record(const SensorRecord& rec, uint16_t boot_cnt,
 // (alinmasa bile PAIR_REQ ulastiysa gateway allowlist'ler -> grace).
 bool espnow_pair(const char* uid, uint16_t boot_cnt, uint32_t nonce);
 bool espnow_is_paired();
+void espnow_set_force_broadcast(bool b);  // yeniden kesif: bir sonraki begin broadcast olur
 
 // Basit Birth Certificate gonderir (special_cmd=0xBC yanitinda).
 // boot_cnt/nonce anti-replay icin gecerli (monoton) olmali.

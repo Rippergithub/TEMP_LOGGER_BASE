@@ -15,7 +15,7 @@
 #define PROJECT_ID              "FYDM-BOARD-01"
 #define PROJECT_ID_HASH         0x7C9246A1UL       // SHA-256(PROJECT_ID)[0:4]
 #define PROTOCOL_VERSION        2                  // v2.1
-#define FW_VERSION              "L1.2.2"           // LEAN — .ino basligindaki changelog ile ayni
+#define FW_VERSION              "L1.3.0"           // LEAN — .ino basligindaki changelog ile ayni
 #define HARDWARE_MODEL          "GTW202-C6"
 
 // -----------------------------------------------------------------------------
@@ -53,6 +53,9 @@
 #define ESPNOW_SEND_RETRIES     2
 // Gateway MAC'i sifir ise broadcast ile aranir; ACK gelen adres peer olarak kaydedilir.
 #define GATEWAY_MAC             {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+// Dayaniklilik: ard arda bu kadar uygulama-ACK'siz cycle -> otomatik yeniden kesif
+// (broadcast + PAIR). Gateway MAC degisse/tasinsa cihaz kendini bulur.
+#define REDISCOVER_AFTER_FAILS  3
 
 // --- Adaptif TX Power (ACK RSSI'sine gore; tam firmware ile ayni esikler) ---
 #define ENABLE_ADAPTIVE_TX      true
