@@ -13,9 +13,11 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.3.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.3.1            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.3.1  - EPD saat/tarih: zaman senkronu ilk geldigi cyclede rec.timestamp
+//             geriye donuk doldurulur (ilk cycle "--:--" kalmaz)
 //   L1.3.0  - Dayaniklilik: broadcast'te L2-ACK zorunlulugu kaldirildi (kesif calisir);
 //             ard arda ACK'siz cycle'da otomatik yeniden kesif (broadcast+PAIR,
 //             REDISCOVER_AFTER_FAILS); force-broadcast RTC bayragi
@@ -346,6 +348,13 @@ void setup() {
 #if ENABLE_OTA
   if (radio_ok) espnow_ota_listen();
 #endif
+
+  // Zaman senkronu BU cyclede ilk kez geldiyse rec.timestamp olcum aninda 0'di;
+  // ekranda hemen gorunsun diye geriye donuk doldur.
+  if (rec.timestamp <= 1000000000UL && g_last_unix > 1000000000UL) {
+    rec.timestamp = g_last_unix + millis() / 1000;
+    if (current_sent && rec.timestamp > g_last_payload_ts) g_last_payload_ts = rec.timestamp;
+  }
 
   // 5) EPD
   // İlk boot(lar)da MUTLAKA FULL: partial refresh onceden FULL ile kurulan 0x26
