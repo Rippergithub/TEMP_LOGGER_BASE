@@ -43,6 +43,10 @@ bool espnow_is_paired();
 // boot_cnt/nonce anti-replay icin gecerli (monoton) olmali.
 bool espnow_send_bc(const char* uid, uint16_t boot_cnt, uint32_t nonce);
 
+#if ENABLE_ADAPTIVE_TX
+void espnow_adapt_tx();    // ACK RSSI'sine gore TX power ayarla (sonraki begin'de etkin)
+#endif
+
 #if ENABLE_OTA
 void espnow_ota_listen();  // send+ACK sonrasi OTA penceresi (BEGIN gelirse OTA dongusu)
 #endif

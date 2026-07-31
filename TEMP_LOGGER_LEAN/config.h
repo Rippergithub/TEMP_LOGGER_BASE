@@ -15,7 +15,7 @@
 #define PROJECT_ID              "FYDM-BOARD-01"
 #define PROJECT_ID_HASH         0x7C9246A1UL       // SHA-256(PROJECT_ID)[0:4]
 #define PROTOCOL_VERSION        2                  // v2.1
-#define FW_VERSION              "L1.1.0"           // LEAN — .ino basligindaki changelog ile ayni
+#define FW_VERSION              "L1.2.0"           // LEAN — .ino basligindaki changelog ile ayni
 #define HARDWARE_MODEL          "GTW202-C6"
 
 // -----------------------------------------------------------------------------
@@ -53,6 +53,14 @@
 #define ESPNOW_SEND_RETRIES     2
 // Gateway MAC'i sifir ise broadcast ile aranir; ACK gelen adres peer olarak kaydedilir.
 #define GATEWAY_MAC             {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
+// --- Adaptif TX Power (ACK RSSI'sine gore; tam firmware ile ayni esikler) ---
+#define ENABLE_ADAPTIVE_TX      true
+#define ESPNOW_MAX_TX_POWER     80      // 20 dBm (birim: 0.25 dBm)
+#define ESPNOW_MIN_TX_POWER     28      // 7 dBm
+#define ADAPTIVE_POWER_STEP     4       // dongu basina 1 dB
+#define TARGET_RSSI_HIGH        (-55)   // bu ustundeyse gucu azalt
+#define TARGET_RSSI_LOW         (-75)   // bu altindaysa gucu artir
 
 // AES-GCM anahtar turetme (Gateway ile AYNI — espnow-protocol §AES-GCM)
 //   PMK = SHA-256(PROJECT_ID + PMK_SALT)[:16]

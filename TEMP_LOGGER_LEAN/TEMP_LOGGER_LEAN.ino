@@ -13,9 +13,10 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.1.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.2.0            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.2.0  - Adaptif TX power (ACK RSSI'sine gore, RTC'de kalici; pil optimizasyonu)
 //   L1.1.0  - Pairing/allowlist (PAIR_REQ), ACK settings (esikler+cal_off),
 //             alarm mantigi (histerezis) + EPD gosterimi
 //           - OTA katmani (ESP-NOW 0x10/0x11/0x12, Update.h + MD5)
@@ -303,6 +304,11 @@ void setup() {
     DEBUG_PRINTLN("[NET] gonderim yok -> buffer'a alindi");
     store_push(rec, bpct);
   }
+
+  // 4.4) Adaptif TX power — bu cyclede alinan ACK RSSI'sine gore ayarla
+#if ENABLE_ADAPTIVE_TX
+  if (radio_ok) espnow_adapt_tx();
+#endif
 
   // 4.5) OTA penceresi — gateway bu MAC icin OTA push edecsе yakala.
   //      BEGIN gelirse firmware alinip END'de cihaz reboot olur (asagi donmez).

@@ -24,7 +24,7 @@ LEAN bilinçli olarak hafiftir; aşağıdaki liste "neyin olmadığını" ve ön
 | **Anomaly detection** | 3-sigma, max değişim hızı | ❌ yok |
 | **Sensör sağlığı** | health score, pre-failure | ❌ yok |
 | **Bulk data** | `MSG_BULK_DATA` (10 kayıt tek pakette) | ❌ tek tek gönderim |
-| **Adaptive TX power** | RSSI'ye göre güç ayarı | ❌ sabit |
+| **Adaptive TX power** | RSSI'ye göre güç ayarı | ✅ **EKLENDİ (L1.2.0)** — ACK RSSI'sine göre ±step, RTC'de kalıcı |
 | **Ekstra EPD ekranları** | service/shutdown/safe-mode/bootsplash/QR/setup | ❌ sadece dashboard |
 | **Çok dil** | TR/EN (`SettingsManager`) | ❌ TR sabit |
 

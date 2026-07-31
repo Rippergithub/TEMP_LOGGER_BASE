@@ -15,6 +15,10 @@ static volatile bool     s_l2_ok     = false;
 static volatile bool     s_app_ack   = false;   // uygulama ACK (recv_cb) geldi
 static volatile bool     s_paired    = false;   // PAIR_RESP alindi
 static AckResult         s_ack;                  // recv_cb doldurur
+static volatile int8_t   s_last_rssi = 0;        // alinan gateway paketinin RSSI'si
+#if ENABLE_ADAPTIVE_TX
+RTC_DATA_ATTR static int8_t rtc_tx_power = ESPNOW_MAX_TX_POWER;  // uyku boyunca kalici
+#endif
 static uint8_t           s_gw_mac[6];            // ACK gelen kaynak MAC
 static bool              s_gw_known  = false;
 
@@ -61,6 +65,7 @@ static void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len
   // Kaynak MAC'i gateway olarak kaydet
   memcpy(s_gw_mac, info->src_addr, 6);
   s_gw_known = true;
+  if (info->rx_ctrl) s_last_rssi = info->rx_ctrl->rssi;   // adaptif TX icin
 
 #if ENABLE_ENCRYPTION
   // Sifreli cerceve -> plaintext. IV icin gonderen (gateway) MAC'i kullanilir.
@@ -87,6 +92,10 @@ bool espnow_begin() {
   WiFi.mode(WIFI_STA);                 // <-- brownout tanisi "step1c" noktasi
   WiFi.disconnect();
   esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+#if ENABLE_ADAPTIVE_TX
+  esp_wifi_set_max_tx_power(rtc_tx_power);   // uyku boyunca ogrenilen TX power
+  DEBUG_PRINT("[TX] power="); DEBUG_PRINT(rtc_tx_power / 4.0f); DEBUG_PRINTLN(" dBm");
+#endif
 
   if (esp_now_init() != ESP_OK) { DEBUG_PRINTLN("[ESPNOW] init FAIL"); return false; }
   esp_now_register_send_cb(onSent);
@@ -200,6 +209,21 @@ bool espnow_send_bc(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
 }
 
 bool espnow_is_paired() { return s_paired; }
+
+#if ENABLE_ADAPTIVE_TX
+// Son alinan ACK RSSI'sine gore TX power'i +-STEP ayarla (bir sonraki begin'de
+// uygulanir). Sinyal guclu (rssi>HIGH) -> gucu azalt (pil); zayif (rssi<LOW) -> artir.
+void espnow_adapt_tx() {
+  int8_t rssi = s_last_rssi;
+  if (rssi == 0) return;                       // gecersiz/veri yok
+  if (rssi > TARGET_RSSI_HIGH && rtc_tx_power > ESPNOW_MIN_TX_POWER)
+    rtc_tx_power -= ADAPTIVE_POWER_STEP;
+  else if (rssi < TARGET_RSSI_LOW && rtc_tx_power < ESPNOW_MAX_TX_POWER)
+    rtc_tx_power += ADAPTIVE_POWER_STEP;
+  DEBUG_PRINT("[TX] adapt rssi="); DEBUG_PRINT(rssi);
+  DEBUG_PRINT(" -> "); DEBUG_PRINT(rtc_tx_power / 4.0f); DEBUG_PRINTLN(" dBm");
+}
+#endif
 
 // PAIR_REQ gonderir (gateway allowlist'e eklesin diye). Gateway pmk_fpr+pid_h+pmk_ver
 // dogrulayinca PAIR_RESP yollar ve MAC'i allowlist'e ekler. PAIR_RESP gelmese bile
