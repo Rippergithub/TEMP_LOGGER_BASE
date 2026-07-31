@@ -13,9 +13,11 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.3.1            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.3.2            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.3.2  - FIX: broadcast kesifte gonderim ancak uygulama-ACK ile "gonderildi"
+//             sayilir (aksi halde gateway duymadan veri kaybi olabiliyordu)
 //   L1.3.1  - EPD saat/tarih: zaman senkronu ilk geldigi cyclede rec.timestamp
 //             geriye donuk doldurulur (ilk cycle "--:--" kalmaz)
 //   L1.3.0  - Dayaniklilik: broadcast'te L2-ACK zorunlulugu kaldirildi (kesif calisir);

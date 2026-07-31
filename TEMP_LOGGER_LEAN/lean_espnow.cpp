@@ -185,7 +185,9 @@ bool espnow_send_record(const SensorRecord& rec, uint16_t boot_cnt,
   if (ack_out) *ack_out = s_ack;
   DEBUG_PRINT("[ESPNOW] gonderildi (L2 ok, appACK=");
   DEBUG_PRINT(s_app_ack ? "1" : "0"); DEBUG_PRINTLN(")");
-  return true;   // L2 ACK = gateway aldi; uygulama ACK opsiyonel
+  // Unicast'te L2 ACK teslim garantisidir. Broadcast'te L2 ACK yoktur -> teslim
+  // ancak uygulama ACK'i ile onaylanir; yoksa "gonderildi" sayma (veri kaybi olmasin).
+  return s_gw_known ? true : s_app_ack;
 }
 
 bool espnow_send_bc(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
