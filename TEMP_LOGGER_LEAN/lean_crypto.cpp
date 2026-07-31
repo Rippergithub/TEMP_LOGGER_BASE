@@ -42,6 +42,23 @@ bool crypto_selftest() {
   return ok;
 }
 
+// Link session key = SHA-256(PMK[16] + macLow[6] + macHigh[6] + "FYDM_LINK_V1")[:16]
+// (gateway/sensor deriveLinkSessionKey ile ayni; MAC'ler memcmp ile siralanir).
+static void link_key(const uint8_t* peer, uint8_t out[16]) {
+  const uint8_t* a = s_mac; const uint8_t* b = peer;
+  if (memcmp(a, b, 6) > 0) { a = peer; b = s_mac; }
+  static const char L[] = "FYDM_LINK_V1";
+  uint8_t material[16 + 6 + 6 + sizeof(L) - 1];
+  size_t off = 0;
+  memcpy(material + off, s_pmk, 16); off += 16;
+  memcpy(material + off, a, 6);      off += 6;
+  memcpy(material + off, b, 6);      off += 6;
+  memcpy(material + off, L, sizeof(L) - 1); off += sizeof(L) - 1;
+  uint8_t h[32];
+  mbedtls_sha256(material, off, h, 0);
+  memcpy(out, h, 16);
+}
+
 size_t crypto_encrypt(const uint8_t* plaintext, size_t len,
                       uint16_t boot_cnt, uint32_t nonce,
                       uint8_t* frame_out, size_t cap) {
@@ -56,7 +73,13 @@ size_t crypto_decrypt(const uint8_t* frame, size_t frame_len,
                       uint8_t* plain_out, size_t cap,
                       uint32_t* out_nonce, uint16_t* out_boot_cnt) {
   crypto_init();
-  int n = espnow_aes_gcm_decrypt(s_pmk, src_mac, frame, frame_len,
+  // Gateway UNICAST ACK'i link session key ile sifreler; BROADCAST'i PMK ile.
+  // Once link key dene, olmazsa PMK'ye dus (tam firmware ile ayni).
+  uint8_t lk[16]; link_key(src_mac, lk);
+  int n = espnow_aes_gcm_decrypt(lk, src_mac, frame, frame_len,
                                  plain_out, cap, out_nonce, out_boot_cnt);
+  if (n <= 0)
+    n = espnow_aes_gcm_decrypt(s_pmk, src_mac, frame, frame_len,
+                               plain_out, cap, out_nonce, out_boot_cnt);
   return (n > 0) ? (size_t)n : 0;
 }
