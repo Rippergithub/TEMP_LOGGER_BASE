@@ -13,9 +13,10 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.2.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.2.1            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.2.1  - EPD sag panel: gonderilemeyen olcum "SON KAYIT", gonderilen "SON DATA"
 //   L1.2.0  - Adaptif TX power (ACK RSSI'sine gore, RTC'de kalici; pil optimizasyonu)
 //   L1.1.0  - Pairing/allowlist (PAIR_REQ), ACK settings (esikler+cal_off),
 //             alarm mantigi (histerezis) + EPD gosterimi
@@ -323,7 +324,7 @@ void setup() {
   bool full = (g_boot_count <= 1) ||
               (EPD_FULL_REFRESH_EVERY_N_BOOTS > 0 &&
                (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0);
-  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count);
+  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent);
 #endif
 
   // 6) UYKU

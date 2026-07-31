@@ -15,7 +15,7 @@
 #define PROJECT_ID              "FYDM-BOARD-01"
 #define PROJECT_ID_HASH         0x7C9246A1UL       // SHA-256(PROJECT_ID)[0:4]
 #define PROTOCOL_VERSION        2                  // v2.1
-#define FW_VERSION              "L1.2.0"           // LEAN — .ino basligindaki changelog ile ayni
+#define FW_VERSION              "L1.2.1"           // LEAN — .ino basligindaki changelog ile ayni
 #define HARDWARE_MODEL          "GTW202-C6"
 
 // -----------------------------------------------------------------------------

@@ -26,7 +26,7 @@ static void setActiveSPI(int activePin) {
 }
 
 void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
-                  bool full, int32_t tz_off, uint32_t boot_count) {
+                  bool full, int32_t tz_off, uint32_t boot_count, bool sent) {
   char buf[24];
   bool probe_ok = (rec.status == S_STATUS_OK || rec.status == S_STATUS_OUT_OF_RANGE);
   bool alarm    = (rec.flags & 0x01) != 0;
@@ -113,8 +113,12 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     Paint_DrawLine(cX - 1, cY + 4, cX + 5, cY - 2, WHITE0, LINE_STYLE_SOLID, DOT_PIXEL_1X1);
   }
 
-  // --- 3. SAG PANEL: "SON DATA" / alarm + saat/buffer ---
-  const char* label = alarm ? "! ALARM !" : (probe_ok ? "SON DATA" : "PROB?");
+  // --- 3. SAG PANEL: SON DATA (gonderildi) / SON KAYIT (buffer'a alindi) / alarm ---
+  // sent=true  -> "SON DATA"  (gateway'e ulasti)
+  // sent=false -> "SON KAYIT" (gonderilemedi, hafizaya alindi) + kayit zamani
+  const char* label = alarm ? "! ALARM !"
+                            : (!probe_ok ? "PROB?"
+                                         : (sent ? "SON DATA" : "SON KAYIT"));
   Paint_DrawString_EN(145 + (100 - (int)(strlen(label) * 8)) / 2, 32, label, &Font16, WHITE0, BLACK0);
 
   // Saat (zaman senkron varsa) yoksa buffer sayisi.
@@ -160,7 +164,7 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
 }
 
 #else  // ENABLE_EPD == false
-void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t) {
+void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t, bool) {
   DEBUG_PRINTLN("[EPD] devre disi (ENABLE_EPD=false)");
 }
 #endif
