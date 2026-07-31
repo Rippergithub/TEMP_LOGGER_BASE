@@ -16,6 +16,7 @@ typedef struct {
   int32_t  tz_off;          // timezone offset saniye
   uint8_t  special_cmd;     // 0x00 NOP / 0xBC BC-iste / ...
   uint8_t  op_mode;
+  bool     ota_pending;     // gateway bu sensor icin OTA kuyruga aldi -> uyanik kal
   // --- settings alt-nesnesi (varsa) ---
   bool     has_settings;
   float    t_low, t_high;   // sicaklik alarm esikleri (°C)
@@ -49,7 +50,9 @@ void espnow_adapt_tx();    // ACK RSSI'sine gore TX power ayarla (sonraki begin'
 #endif
 
 #if ENABLE_OTA
-void espnow_ota_listen();  // send+ACK sonrasi OTA penceresi (BEGIN gelirse OTA dongusu)
+// send+ACK sonrasi OTA penceresi. catch_window_ms icinde BEGIN gelmezse doner.
+// ACK 'ota_pending' ise .ino uzun pencere gecirir (uyanik kalir).
+void espnow_ota_listen(uint32_t catch_window_ms);
 #endif
 
 void espnow_end();  // radyoyu kapat

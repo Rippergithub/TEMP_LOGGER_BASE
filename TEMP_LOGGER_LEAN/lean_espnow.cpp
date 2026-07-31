@@ -50,6 +50,7 @@ static void parse_ack_json(const char* json, int len) {
   s_ack.tz_off      = doc["off"] | 0;
   s_ack.special_cmd = doc["special_cmd"] | 0;
   s_ack.op_mode     = doc["op_mode"] | 255;
+  s_ack.ota_pending = (doc["ota_pending"] | doc["ota"] | 0) ? true : false;
 
   if (doc.containsKey("settings")) {
     JsonObject s = doc["settings"];
@@ -272,10 +273,10 @@ bool espnow_pair(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
 // send+ACK sonrasi radyo aciken cagirilir. Kisa pencerede BEGIN gelirse OTA
 // dongusune girer; END basariliysa cihaz yeniden baslar (bu fonksiyon donmez).
 // BEGIN gelmezse veya idle timeout olursa doner -> normal akis (uyku) devam.
-void espnow_ota_listen() {
+void espnow_ota_listen(uint32_t catch_window_ms) {
   uint32_t t0 = millis();
-  while (!ota_active() && (millis() - t0) < OTA_LISTEN_WINDOW_MS) delay(10);
-  if (!ota_active()) return;                       // OTA yok
+  while (!ota_active() && (millis() - t0) < catch_window_ms) delay(10);
+  if (!ota_active()) return;                       // OTA yok (BEGIN gelmedi)
 
   DEBUG_PRINTLN("[OTA] pencere: firmware aliniyor...");
   while (ota_active()) {

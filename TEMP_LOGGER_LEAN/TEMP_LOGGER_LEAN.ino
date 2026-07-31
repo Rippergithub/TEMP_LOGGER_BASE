@@ -13,9 +13,11 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.3.2            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.4.0            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.4.0  - OTA ota_pending: gateway ACK'te "OTA var" derse LEAN uyumaz, uzun
+//             pencerede (OTA_PENDING_WINDOW_MS) BEGIN bekler (uyku modunda OTA)
 //   L1.3.2  - FIX: broadcast kesifte gonderim ancak uygulama-ACK ile "gonderildi"
 //             sayilir (aksi halde gateway duymadan veri kaybi olabiliyordu)
 //   L1.3.1  - EPD saat/tarih: zaman senkronu ilk geldigi cyclede rec.timestamp
@@ -282,6 +284,7 @@ void setup() {
 
   bool current_sent = false;
   bool comm_ok = false;   // bu cyclede en az bir uygulama-ACK alindi mi (kesif sagligi)
+  bool ota_pending = false; // gateway ACK'te "sana OTA var" dedi mi
   if (radio_ok) {
     AckResult ack; memset(&ack, 0, sizeof(ack));
 
@@ -300,6 +303,7 @@ void setup() {
       if (espnow_send_record(old, (uint16_t)g_boot_count, ++g_pkt_counter, &ack)) {
         store_remove_oldest();
         if (ack.got_ack) comm_ok = true;
+        if (ack.ota_pending) ota_pending = true;
         apply_ack(ack);
         if (old.timestamp > g_last_payload_ts) g_last_payload_ts = old.timestamp;
         drained++;
@@ -315,6 +319,7 @@ void setup() {
     if (store_total() == 0) {
       current_sent = espnow_send_record(rec, (uint16_t)g_boot_count, ++g_pkt_counter, &ack);
       if (current_sent) { if (ack.got_ack) comm_ok = true;
+                          if (ack.ota_pending) ota_pending = true;
                           apply_ack(ack);
                           if (rec.timestamp > g_last_payload_ts) g_last_payload_ts = rec.timestamp; }
       else --g_pkt_counter;
@@ -348,7 +353,10 @@ void setup() {
   // 4.5) OTA penceresi — gateway bu MAC icin OTA push edecsе yakala.
   //      BEGIN gelirse firmware alinip END'de cihaz reboot olur (asagi donmez).
 #if ENABLE_OTA
-  if (radio_ok) espnow_ota_listen();
+  if (radio_ok) {
+    if (ota_pending) DEBUG_PRINTLN("[OTA] ACK ota_pending -> uzun pencere, uyanik kal");
+    espnow_ota_listen(ota_pending ? OTA_PENDING_WINDOW_MS : OTA_LISTEN_WINDOW_MS);
+  }
 #endif
 
   // Zaman senkronu BU cyclede ilk kez geldiyse rec.timestamp olcum aninda 0'di;

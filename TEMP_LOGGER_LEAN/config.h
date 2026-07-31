@@ -15,7 +15,7 @@
 #define PROJECT_ID              "FYDM-BOARD-01"
 #define PROJECT_ID_HASH         0x7C9246A1UL       // SHA-256(PROJECT_ID)[0:4]
 #define PROTOCOL_VERSION        2                  // v2.1
-#define FW_VERSION              "L1.3.2"           // LEAN — .ino basligindaki changelog ile ayni
+#define FW_VERSION              "L1.4.0"           // LEAN — .ino basligindaki changelog ile ayni
 #define HARDWARE_MODEL          "GTW202-C6"
 
 // -----------------------------------------------------------------------------
@@ -33,7 +33,8 @@
 // ⚠️ Partition semasi IKI app slotu (app0+app1) + littlefs icermeli.
 //    Arduino IDE Tools -> "Default 4MB with spiffs" (app0/app1 1.2MB + spiffs 1.5MB)
 //    hem OTA hem 30-gun LittleFS buffer'i karsilar.
-#define OTA_LISTEN_WINDOW_MS    1500    // send+ACK sonrasi BEGIN'i yakalama penceresi
+#define OTA_LISTEN_WINDOW_MS    1500    // normal: send+ACK sonrasi BEGIN'i yakalama penceresi
+#define OTA_PENDING_WINDOW_MS   30000   // ACK 'ota_pending' ise: BEGIN'i beklerken uyanik kal (30 sn)
 #define OTA_IDLE_TIMEOUT_MS     6000    // chunk gelmezse OTA'yi iptal et (pil koruma)
 #define OTA_MAX_FW_BYTES        (2u * 1024u * 1024u)  // gecerli firmware boyut ust siniri
 
