@@ -13,9 +13,12 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.5.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.5.1            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.5.1  - Zaman damgasi: ilerleyen epoch tahmini (uyanista +sleep_sec, ACK'te
+//             resync). Buffered kayit OLCUM zamaniyla saklanir; hafizadan gonderilen
+//             veri orijinal zamaniyla gider (guncel zamanla YENIDEN damgalanmaz).
 //   L1.5.0  - OTA transport JSON'a cevrildi (gateway forward'i JSON: cmd=ota_begin/
 //             ota_data hex/ota_end). Binary yol kaldirildi. recv dispatch JSON.
 //   L1.4.0  - OTA ota_pending: gateway ACK'te "OTA var" derse LEAN uyumaz, uzun
@@ -176,8 +179,10 @@ static SensorRecord measure() {
 
   uint16_t mv = read_batt_mv();
   r.batt_mv = mv;
-  // Zaman: senkron varsa yaklasik simdiki epoch, yoksa 0 (gateway doldurur)
-  r.timestamp = (g_last_unix > 0) ? (g_last_unix + millis() / 1000) : 0;
+  // Olcum zaman damgasi = ilerleyen epoch tahmini + bu cycle'daki uyanik sure.
+  // Gecerli degilse 0 (gateway doldurur). Bu deger kayitla birlikte BUFFER'a yazilir;
+  // hafizadan gonderilirken DEGISTIRILMEZ (orijinal olcum zamani korunur).
+  r.timestamp = (g_last_unix > MIN_VALID_UNIX) ? (g_last_unix + millis() / 1000) : 0;
 
   DEBUG_PRINT("[MEAS] T="); DEBUG_PRINT(r.temp);
   DEBUG_PRINT(" H="); DEBUG_PRINT(r.hum);
@@ -242,6 +247,11 @@ static void go_to_sleep() {
 // =============================================================================
 void setup() {
   g_boot_count++;
+
+  // İlerleyen zaman tahmini: uyandiysak, bir onceki cycle'da uyudugumuz sure kadar
+  // saati ilerlet. Boylece OFFLINE'da (ACK/senkron yokken) bile olcum zaman damgalari
+  // gercekci ve aralikli olur; ACK gelince apply_ack ile otoritatif olarak resync edilir.
+  if (g_last_unix > MIN_VALID_UNIX) g_last_unix += g_sleep_sec;
 
   power_rail_up();
 
