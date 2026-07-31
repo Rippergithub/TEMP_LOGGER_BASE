@@ -12,8 +12,10 @@
 // Dashboard'u ciz. full=true tam yenileme (ghosting temizligi), false partial.
 // tz_off: gateway ACK'ten gelen timezone offset (sn, TR=10800) — saat yerel gosterilir.
 // boot_count: alt bar bilgi donusumu (HW/FW/UID) icin.
-// sent: bu olcum gateway'e gonderildi mi (true="SON DATA", false="SON KAYIT").
+// sent: bu olcum gonderildi mi. last_payload_ts: son basariyla gonderilen olcum
+// zamani (getLastPayloadUnix karsiligi). Panel: SON KAYIT / SON DATA / KAYIT (n).
 void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
-                  bool full, int32_t tz_off, uint32_t boot_count, bool sent);
+                  bool full, int32_t tz_off, uint32_t boot_count, bool sent,
+                  uint32_t last_payload_ts);
 
 #endif  // LEAN_DISPLAY_H

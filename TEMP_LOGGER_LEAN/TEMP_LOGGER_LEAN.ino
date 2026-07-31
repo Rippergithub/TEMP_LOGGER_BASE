@@ -13,9 +13,11 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.2.1            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.2.2            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.2.2  - EPD sag panel gercek temp_logger mantigi: SON KAYIT (last_payload_ts) /
+//             SON DATA / KAYIT (n); g_last_payload_ts RTC'de takip edilir
 //   L1.2.1  - EPD sag panel: gonderilemeyen olcum "SON KAYIT", gonderilen "SON DATA"
 //   L1.2.0  - Adaptif TX power (ACK RSSI'sine gore, RTC'de kalici; pil optimizasyonu)
 //   L1.1.0  - Pairing/allowlist (PAIR_REQ), ACK settings (esikler+cal_off),
@@ -68,6 +70,7 @@ RTC_DATA_ATTR static float    g_h_low        = H_LOW_LIMIT;
 RTC_DATA_ATTR static float    g_h_high       = H_HIGH_LIMIT;
 RTC_DATA_ATTR static float    g_cal_off      = 0.0f;
 RTC_DATA_ATTR static bool     g_in_alarm     = false;  // histerezis durumu
+RTC_DATA_ATTR static uint32_t g_last_payload_ts = 0;   // son BASARIYLA gonderilen olcum zamani (getLastPayloadUnix karsiligi)
 
 static TH09C s_th09c;
 
@@ -284,6 +287,7 @@ void setup() {
       if (espnow_send_record(old, (uint16_t)g_boot_count, ++g_pkt_counter, &ack)) {
         store_remove_oldest();
         apply_ack(ack);
+        if (old.timestamp > g_last_payload_ts) g_last_payload_ts = old.timestamp;
         drained++;
         delay(20);
       } else {
@@ -296,7 +300,9 @@ void setup() {
     // 3b) Bu dongunun olcumunu gonder
     if (store_total() == 0) {
       current_sent = espnow_send_record(rec, (uint16_t)g_boot_count, ++g_pkt_counter, &ack);
-      if (current_sent) apply_ack(ack); else --g_pkt_counter;
+      if (current_sent) { apply_ack(ack);
+                          if (rec.timestamp > g_last_payload_ts) g_last_payload_ts = rec.timestamp; }
+      else --g_pkt_counter;
     }
   }
 
@@ -324,7 +330,7 @@ void setup() {
   bool full = (g_boot_count <= 1) ||
               (EPD_FULL_REFRESH_EVERY_N_BOOTS > 0 &&
                (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0);
-  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent);
+  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent, g_last_payload_ts);
 #endif
 
   // 6) UYKU

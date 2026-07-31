@@ -26,7 +26,8 @@ static void setActiveSPI(int activePin) {
 }
 
 void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
-                  bool full, int32_t tz_off, uint32_t boot_count, bool sent) {
+                  bool full, int32_t tz_off, uint32_t boot_count, bool sent,
+                  uint32_t last_payload_ts) {
   char buf[24];
   bool probe_ok = (rec.status == S_STATUS_OK || rec.status == S_STATUS_OUT_OF_RANGE);
   bool alarm    = (rec.flags & 0x01) != 0;
@@ -113,27 +114,32 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     Paint_DrawLine(cX - 1, cY + 4, cX + 5, cY - 2, WHITE0, LINE_STYLE_SOLID, DOT_PIXEL_1X1);
   }
 
-  // --- 3. SAG PANEL: SON DATA (gonderildi) / SON KAYIT (buffer'a alindi) / alarm ---
-  // sent=true  -> "SON DATA"  (gateway'e ulasti)
-  // sent=false -> "SON KAYIT" (gonderilemedi, hafizaya alindi) + kayit zamani
-  const char* label = alarm ? "! ALARM !"
-                            : (!probe_ok ? "PROB?"
-                                         : (sent ? "SON DATA" : "SON KAYIT"));
+  // --- 3. SAG PANEL (referans DisplayManager::epd_update_data mantigi) ---
+  //  last_payload_ts (getLastPayloadUnix) gecerli  -> "SON KAYIT" + o zaman
+  //  degilse: gonderildi ya da buffer bos           -> "SON DATA"  + guncel zaman
+  //  degilse (gonderilemedi + buffer dolu)          -> "KAYIT (n)"
+  bool hasLast = (last_payload_ts > 1000000000UL);
+  const char* label;
+  char labelBuf[16];
+  if (alarm)        label = "! ALARM !";
+  else if (!probe_ok) label = "PROB?";
+  else if (hasLast) label = "SON KAYIT";
+  else if (sent || pending == 0) label = "SON DATA";
+  else { snprintf(labelBuf, sizeof(labelBuf), "KAYIT (%u)", pending); label = labelBuf; }
   Paint_DrawString_EN(145 + (100 - (int)(strlen(label) * 8)) / 2, 32, label, &Font16, WHITE0, BLACK0);
 
-  // Saat (zaman senkron varsa) yoksa buffer sayisi.
-  // rec.timestamp UTC epoch; yerel saat icin tz_off (gateway ACK 'off') eklenir
-  // ve gmtime_r ile bicimlenir (sistem TZ'sine bagimli kalmadan dogru saat).
-  if (rec.timestamp > 1000000000UL) {
-    struct tm ti; time_t t = (time_t)((int64_t)rec.timestamp + tz_off); gmtime_r(&t, &ti);
-    char tb[8]; strftime(tb, sizeof(tb), "%H:%M", &ti);
-    Paint_DrawString_EN(145 + (100 - (int)(strlen(tb) * 16)) / 2, 48, tb, &Font24, WHITE0, BLACK0);
-    char db[12]; strftime(db, sizeof(db), "%d.%m.%Y", &ti);
-    Paint_DrawString_EN(145 + (100 - (int)(strlen(db) * 8)) / 2, 80, db, &Font16, WHITE0, BLACK0);
-  } else {
-    snprintf(buf, sizeof(buf), "BUF:%u", pending);
-    Paint_DrawString_EN(145 + (100 - (int)(strlen(buf) * 16)) / 2, 55, buf, &Font24, WHITE0, BLACK0);
-  }
+  // Gosterilecek zaman: SON KAYIT ise last_payload_ts, degilse guncel olcum zamani.
+  // UTC epoch + tz_off (gateway 'off') -> gmtime_r ile yerel saat.
+  uint32_t showTs = hasLast ? last_payload_ts
+                            : (rec.timestamp > 1000000000UL ? rec.timestamp : 0);
+  char tb[8], db[12];
+  if (showTs > 1000000000UL) {
+    struct tm ti; time_t t = (time_t)((int64_t)showTs + tz_off); gmtime_r(&t, &ti);
+    strftime(tb, sizeof(tb), "%H:%M", &ti);
+    strftime(db, sizeof(db), "%d.%m.%Y", &ti);
+  } else { strcpy(tb, "--:--"); strcpy(db, "--.--.----"); }
+  Paint_DrawString_EN(145 + (100 - (int)(strlen(tb) * 16)) / 2, 48, tb, &Font24, WHITE0, BLACK0);
+  Paint_DrawString_EN(145 + (100 - (int)(strlen(db) * 8)) / 2, 80, db, &Font16, WHITE0, BLACK0);
 
   // --- 4. FOOTER BAR (bilgi donusumlu, referans DisplayManager mantigi) ---
   // Oncelik: prob/pil/baglanti uyarilari; normalde HW/FW/UID bilgisi boot_count%3
@@ -164,7 +170,7 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
 }
 
 #else  // ENABLE_EPD == false
-void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t, bool) {
+void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t, bool, uint32_t) {
   DEBUG_PRINTLN("[EPD] devre disi (ENABLE_EPD=false)");
 }
 #endif
