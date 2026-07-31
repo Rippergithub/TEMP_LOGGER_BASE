@@ -13,9 +13,11 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.4.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.5.0            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.5.0  - OTA transport JSON'a cevrildi (gateway forward'i JSON: cmd=ota_begin/
+//             ota_data hex/ota_end). Binary yol kaldirildi. recv dispatch JSON.
 //   L1.4.0  - OTA ota_pending: gateway ACK'te "OTA var" derse LEAN uyumaz, uzun
 //             pencerede (OTA_PENDING_WINDOW_MS) BEGIN bekler (uyku modunda OTA)
 //   L1.3.2  - FIX: broadcast kesifte gonderim ancak uygulama-ACK ile "gonderildi"

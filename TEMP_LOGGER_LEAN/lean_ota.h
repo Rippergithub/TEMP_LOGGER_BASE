@@ -3,24 +3,26 @@
 // =============================================================================
 //  ESP-NOW OTA alicisi — LEAN   (Gateway: Faydam_GTW202_ESPGTW ile uyumlu)
 //
-//  Binary paketler (AES-GCM cozuldukten SONRA plaintext olarak gelir):
-//    BEGIN 0x10: [type1][file_size 4 LE][md5 32]   (=38B; md5 opsiyonel)
-//    DATA  0x11: [type1][index 2][total 2][data_len 1][data ...]  (data offset 6)
-//    END   0x12: [type1]
+//  AKTIF TRANSPORT = JSON. Gateway, PC/donanim merkezinden gelen OTA komutlarini
+//  sensore JSON olarak (mac cikarilip AES-GCM ile) forward eder:
+//    ota_begin: {"cmd":"ota_begin","size":N,"md5":"..32..","fw_ver":"..?","sig":"..?"}
+//    ota_data : {"cmd":"ota_data","idx":i,"len":L,"hex":"AABB.."}
+//    ota_end  : {"cmd":"ota_end"}
+//  (Binary 0x10/0x11/0x12 yolu bu sistemde kullanilmiyor -> desteklenmez.)
 //
-//  MD5 dogrulamasi Update.setMD5 ile; END'de Update.end() basariliysa ESP.restart().
-//  _ota_active uykuyu bloklar; her pakette deadline yenilenir (idle timeout).
+//  MD5 dogrulamasi Update.setMD5; ota_end'de Update.end() OK ise ESP.restart().
+//  ota_active() uykuyu bloklar; her pakette deadline yenilenir (idle timeout).
 // =============================================================================
 #include <Arduino.h>
 
-void     ota_handle(const uint8_t* plain, int len);  // 0x10/0x11/0x12 dispatch
-bool     ota_active();                                // OTA suruyor mu (uyku bloke)
-uint32_t ota_last_ms();                               // son paket zamani (idle timeout)
-void     ota_abort();                                 // iptal (timeout/hata)
+void     ota_handle_json(const char* json, int len);  // ota_begin/data/end JSON dispatch
+bool     ota_active();                                 // OTA suruyor mu
+uint32_t ota_last_ms();                                // son paket zamani (idle timeout)
+void     ota_abort();
 
-// Bir plaintext'in OTA binary paketi olup olmadigi (ilk byte 0x10/0x11/0x12).
-static inline bool ota_is_packet(const uint8_t* d, int len) {
-  return len >= 1 && (d[0] == 0x10 || d[0] == 0x11 || d[0] == 0x12);
+// Plaintext bir OTA JSON komutu mu? (cmd=ota_begin/ota_data/ota_end)
+static inline bool ota_is_json(const char* p) {
+  return p && (strstr(p, "ota_begin") || strstr(p, "ota_data") || strstr(p, "ota_end"));
 }
 
 #endif  // LEAN_OTA_H

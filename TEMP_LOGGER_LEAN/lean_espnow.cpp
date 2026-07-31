@@ -77,17 +77,23 @@ static void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len
   uint32_t rn; uint16_t rbc;
   size_t pn = crypto_decrypt(data, len, info->src_addr, plain, sizeof(plain) - 1, &rn, &rbc);
   if (pn > 0) {
+    plain[pn] = 0;
 #if ENABLE_OTA
-    if (ota_is_packet(plain, pn)) { ota_handle(plain, pn); return; }   // OTA binary
+    if (ota_is_json((const char*)plain)) { ota_handle_json((const char*)plain, pn); return; }
 #endif
-    plain[pn] = 0; parse_ack_json((const char*)plain, pn); return;     // ACK JSON
+    parse_ack_json((const char*)plain, pn); return;   // ACK / PAIR_RESP JSON
   }
   // decrypt basarisiz -> belki duz JSON (lab) gelmistir, dene
 #endif
+  if (len > 0 && data[0] == '{') {
+    static char raw[512];
+    int n = (len < (int)sizeof(raw) - 1) ? len : (int)sizeof(raw) - 1;
+    memcpy(raw, data, n); raw[n] = 0;
 #if ENABLE_OTA
-  if (ota_is_packet(data, len)) { ota_handle(data, len); return; }
+    if (ota_is_json(raw)) { ota_handle_json(raw, n); return; }
 #endif
-  if (len > 0 && (data[0] == '{')) parse_ack_json((const char*)data, len);
+    parse_ack_json(raw, n);
+  }
 }
 
 // ---- Radyo -----------------------------------------------------------------
