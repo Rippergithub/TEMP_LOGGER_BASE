@@ -143,36 +143,31 @@ static bool send_frame(const uint8_t* frame, size_t n) {
   return s_l2_done && s_l2_ok;
 }
 
-static size_t build_and_encrypt(const SensorDataMessage& msg,
-                                uint16_t boot_cnt, uint32_t nonce,
-                                uint8_t* out, size_t cap) {
-#if ENABLE_ENCRYPTION
-  return crypto_encrypt((const uint8_t*)&msg, sizeof(msg), boot_cnt, nonce, out, cap);
-#else
-  if (cap < sizeof(msg)) return 0;
-  memcpy(out, &msg, sizeof(msg));
-  return sizeof(msg);
-#endif
-}
-
 bool espnow_send_record(const SensorRecord& rec, uint16_t boot_cnt,
                         uint32_t pkt, AckResult* ack_out) {
-  SensorDataMessage msg = {};
-  msg.msg_type         = MSG_SENSOR_DATA;
-  msg.protocol_version = PROTOCOL_VERSION;
-  msg.packet_counter   = pkt;
-  msg.project_id_hash  = PROJECT_ID_HASH;
-  msg.timestamp        = rec.timestamp;
-  msg.count            = 4;
-  msg.param_ids[0] = PARAM_TEMP;   msg.values[0] = rec.temp;
-  msg.param_ids[1] = PARAM_HUM;    msg.values[1] = rec.hum;
-  msg.param_ids[2] = PARAM_BATT;   msg.values[2] = (float)rec.batt_mv;
-  msg.param_ids[3] = PARAM_STATUS; msg.values[3] = (float)rec.status;
-  msg.rssi = 0; msg.channel = ESPNOW_CHANNEL;
-  strncpy(msg.version, FW_VERSION, sizeof(msg.version) - 1);
+  // MINIFIED JSON veri ("typ":"D"). Gateway JSON gorunce JSON ACK doner
+  // (unix/off/settings/ota_pending). Binary struct gonderilse gateway BINARY ACK
+  // donerdi ve LEAN parse edemezdi -> saat/settings/ota calismaz.
+  // Alan adlari gateway sensor_manager.cpp ile uyumlu: t,h,bt,st,ts,v,pkt.
+  StaticJsonDocument<256> doc;
+  doc["typ"] = "D";
+  doc["t"]   = rec.temp;
+  doc["h"]   = rec.hum;
+  doc["bt"]  = rec.batt_mv;      // mV
+  doc["st"]  = rec.status;
+  if (rec.timestamp > 0) doc["ts"] = rec.timestamp;  // olcum zamani (orijinal)
+  doc["pkt"] = pkt;
+  doc["v"]   = FW_VERSION;
+  char json[256];
+  size_t jn = serializeJson(doc, json, sizeof(json));
 
-  uint8_t frame[GCM_HDR_LEN + GCM_TAG_LEN + sizeof(SensorDataMessage) + 4];
-  size_t n = build_and_encrypt(msg, boot_cnt, pkt, frame, sizeof(frame));
+  uint8_t frame[GCM_HDR_LEN + GCM_TAG_LEN + 256];
+  size_t n;
+#if ENABLE_ENCRYPTION
+  n = crypto_encrypt((const uint8_t*)json, jn, boot_cnt, pkt, frame, sizeof(frame));
+#else
+  memcpy(frame, json, jn); n = jn;
+#endif
   if (n == 0) { DEBUG_PRINTLN("[ESPNOW] encrypt FAIL"); return false; }
 
   // uygulama ACK durumunu sifirla

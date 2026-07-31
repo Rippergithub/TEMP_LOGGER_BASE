@@ -13,9 +13,13 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.5.1            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.5.2            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.5.2  - FIX (saat gorunmuyor kok neden): veri artik MINIFIED JSON ("typ":"D")
+//             gonderiliyor. Gateway binary veriye BINARY ACK donuyordu; LEAN sadece
+//             JSON ACK parse ettigi icin unix/settings/ota_pending hic okunamiyordu.
+//             JSON veri -> JSON ACK -> saat + settings + ota_pending calisir.
 //   L1.5.1  - Zaman damgasi: ilerleyen epoch tahmini (uyanista +sleep_sec, ACK'te
 //             resync). Buffered kayit OLCUM zamaniyla saklanir; hafizadan gonderilen
 //             veri orijinal zamaniyla gider (guncel zamanla YENIDEN damgalanmaz).
