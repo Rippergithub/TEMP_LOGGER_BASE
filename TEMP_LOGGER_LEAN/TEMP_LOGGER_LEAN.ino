@@ -13,9 +13,12 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.5.4            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.6.0            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.6.0  - EPD alarm: sag panelde UNLEM ucgeni + footer'da alarm BASLANGIC zamani
+//             (g_alarm_start_ts). Sag panel: buffer varsa "KAYIT (n)" + son teslim
+//             zamani (SON KAYIT sayisi gorunur).
 //   L1.5.4  - FIX (appACK=0 kok neden): gateway UNICAST ACK'i LINK SESSION KEY ile
 //             sifreliyor; LEAN sadece PMK ile cozuyordu -> ACK/unix okunamiyordu.
 //             crypto_decrypt artik once link key sonra PMK dener (deriveLinkSessionKey).
@@ -95,6 +98,7 @@ RTC_DATA_ATTR static float    g_h_low        = H_LOW_LIMIT;
 RTC_DATA_ATTR static float    g_h_high       = H_HIGH_LIMIT;
 RTC_DATA_ATTR static float    g_cal_off      = 0.0f;
 RTC_DATA_ATTR static bool     g_in_alarm     = false;  // histerezis durumu
+RTC_DATA_ATTR static uint32_t g_alarm_start_ts = 0;    // alarmin ilk basladigi an (footer BASLANGIC)
 RTC_DATA_ATTR static uint32_t g_last_payload_ts = 0;   // son BASARIYLA gonderilen olcum zamani (getLastPayloadUnix karsiligi)
 RTC_DATA_ATTR static uint8_t  g_fail_streak     = 0;    // ard arda uygulama-ACK'siz cycle sayisi
 RTC_DATA_ATTR static bool     g_force_bcast     = false;// yeniden kesif: broadcast + PAIR
@@ -184,8 +188,15 @@ static SensorRecord measure() {
       over = (r.temp > g_t_high) || (r.temp < g_t_low) ||
              (r.hum  > g_h_high) || (r.hum  < g_h_low);
     }
+    bool was = g_in_alarm;
     g_in_alarm = over;
-    if (over) { r.status = S_STATUS_OUT_OF_RANGE; r.flags |= 0x01; }
+    if (over) {
+      r.status = S_STATUS_OUT_OF_RANGE; r.flags |= 0x01;
+      // Alarm ilk basladigi an: baslangic zamanini kaydet (footer'da gosterilir)
+      if (!was) g_alarm_start_ts = (r.timestamp > MIN_VALID_UNIX) ? r.timestamp : g_last_unix;
+    } else {
+      g_alarm_start_ts = 0;   // alarm bitti
+    }
   }
 
   uint16_t mv = read_batt_mv();
@@ -396,7 +407,7 @@ void setup() {
   bool full = (g_boot_count <= 1) ||
               (EPD_FULL_REFRESH_EVERY_N_BOOTS > 0 &&
                (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0);
-  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent, g_last_payload_ts);
+  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent, g_last_payload_ts, g_alarm_start_ts);
 #endif
 
   // 6) UYKU

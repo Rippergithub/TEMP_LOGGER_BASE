@@ -27,7 +27,7 @@ static void setActiveSPI(int activePin) {
 
 void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
                   bool full, int32_t tz_off, uint32_t boot_count, bool sent,
-                  uint32_t last_payload_ts) {
+                  uint32_t last_payload_ts, uint32_t alarm_start_ts) {
   char buf[24];
   bool probe_ok = (rec.status == S_STATUS_OK || rec.status == S_STATUS_OUT_OF_RANGE);
   bool alarm    = (rec.flags & 0x01) != 0;
@@ -114,32 +114,38 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     Paint_DrawLine(cX - 1, cY + 4, cX + 5, cY - 2, WHITE0, LINE_STYLE_SOLID, DOT_PIXEL_1X1);
   }
 
-  // --- 3. SAG PANEL (referans DisplayManager::epd_update_data mantigi) ---
-  //  last_payload_ts (getLastPayloadUnix) gecerli  -> "SON KAYIT" + o zaman
-  //  degilse: gonderildi ya da buffer bos           -> "SON DATA"  + guncel zaman
-  //  degilse (gonderilemedi + buffer dolu)          -> "KAYIT (n)"
-  bool hasLast = (last_payload_ts > 1000000000UL);
-  const char* label;
-  char labelBuf[16];
-  if (alarm)        label = "! ALARM !";
-  else if (!probe_ok) label = "PROB?";
-  else if (hasLast) label = "SON KAYIT";
-  else if (sent || pending == 0) label = "SON DATA";
-  else { snprintf(labelBuf, sizeof(labelBuf), "KAYIT (%u)", pending); label = labelBuf; }
-  Paint_DrawString_EN(145 + (100 - (int)(strlen(label) * 8)) / 2, 32, label, &Font16, WHITE0, BLACK0);
+  // --- 3. SAG PANEL (x=145..245) ---
+  if (alarm) {
+    // Alarm: buyuk UNLEM (ucgen + "!") — saat/etiket yerine dikkat cekici ikon.
+    const int tx = 195, ty = 26, hw = 24, by = 70;   // tepe (tx,ty), taban y=by
+    Paint_DrawLine(tx, ty, tx - hw, by, BLACK0, LINE_STYLE_SOLID, DOT_PIXEL_2X2);
+    Paint_DrawLine(tx, ty, tx + hw, by, BLACK0, LINE_STYLE_SOLID, DOT_PIXEL_2X2);
+    Paint_DrawLine(tx - hw, by, tx + hw, by, BLACK0, LINE_STYLE_SOLID, DOT_PIXEL_2X2);
+    Paint_DrawLine(tx, ty + 14, tx, by - 14, BLACK0, LINE_STYLE_SOLID, DOT_PIXEL_3X3);      // "!" govde
+    Paint_DrawRectangle(tx - 1, by - 10, tx + 2, by - 7, BLACK0, DRAW_FILL_FULL, DOT_PIXEL_2X2); // "!" nokta
+    Paint_DrawString_EN(145 + (100 - (int)(9 * 8)) / 2, 30, "! ALARM !", &Font16, WHITE0, BLACK0);
+  } else {
+    // last_payload_ts gecerli -> son teslim zamani; buffer varsa "KAYIT (n)".
+    bool hasLast = (last_payload_ts > 1000000000UL);
+    char labelBuf[16];
+    const char* label;
+    if (!probe_ok)            label = "PROB?";
+    else if (pending > 0)   { snprintf(labelBuf, sizeof(labelBuf), "KAYIT (%u)", pending); label = labelBuf; }
+    else if (hasLast)         label = "SON KAYIT";
+    else                      label = "SON DATA";
+    Paint_DrawString_EN(145 + (100 - (int)(strlen(label) * 8)) / 2, 32, label, &Font16, WHITE0, BLACK0);
 
-  // Gosterilecek zaman: SON KAYIT ise last_payload_ts, degilse guncel olcum zamani.
-  // UTC epoch + tz_off (gateway 'off') -> gmtime_r ile yerel saat.
-  uint32_t showTs = hasLast ? last_payload_ts
-                            : (rec.timestamp > 1000000000UL ? rec.timestamp : 0);
-  char tb[8], db[12];
-  if (showTs > 1000000000UL) {
-    struct tm ti; time_t t = (time_t)((int64_t)showTs + tz_off); gmtime_r(&t, &ti);
-    strftime(tb, sizeof(tb), "%H:%M", &ti);
-    strftime(db, sizeof(db), "%d.%m.%Y", &ti);
-  } else { strcpy(tb, "--:--"); strcpy(db, "--.--.----"); }
-  Paint_DrawString_EN(145 + (100 - (int)(strlen(tb) * 16)) / 2, 48, tb, &Font24, WHITE0, BLACK0);
-  Paint_DrawString_EN(145 + (100 - (int)(strlen(db) * 8)) / 2, 80, db, &Font16, WHITE0, BLACK0);
+    uint32_t showTs = hasLast ? last_payload_ts
+                              : (rec.timestamp > 1000000000UL ? rec.timestamp : 0);
+    char tb[8], db[12];
+    if (showTs > 1000000000UL) {
+      struct tm ti; time_t t = (time_t)((int64_t)showTs + tz_off); gmtime_r(&t, &ti);
+      strftime(tb, sizeof(tb), "%H:%M", &ti);
+      strftime(db, sizeof(db), "%d.%m.%Y", &ti);
+    } else { strcpy(tb, "--:--"); strcpy(db, "--.--.----"); }
+    Paint_DrawString_EN(145 + (100 - (int)(strlen(tb) * 16)) / 2, 48, tb, &Font24, WHITE0, BLACK0);
+    Paint_DrawString_EN(145 + (100 - (int)(strlen(db) * 8)) / 2, 80, db, &Font16, WHITE0, BLACK0);
+  }
 
   // --- 4. FOOTER BAR (bilgi donusumlu, referans DisplayManager mantigi) ---
   // Oncelik: prob/pil/baglanti uyarilari; normalde HW/FW/UID bilgisi boot_count%3
@@ -147,7 +153,16 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
   Paint_DrawRectangle(0, 103, 249, 120, BLACK0, DRAW_FILL_FULL, DOT_PIXEL_1X1);
   char fbuf[28];
   const char* footer;
-  if (alarm)                 footer = "! ! ALARM ! !";
+  if (alarm) {
+    // Alarm footer: baslangic zamani "BASLANGIC: dd/mm/yy HH:MM" (referans ile ayni)
+    if (alarm_start_ts > 1000000000UL) {
+      struct tm ai; time_t at = (time_t)((int64_t)alarm_start_ts + tz_off); gmtime_r(&at, &ai);
+      strftime(fbuf, sizeof(fbuf), "BASLANGIC: %d/%m/%y %H:%M", &ai);
+    } else {
+      snprintf(fbuf, sizeof(fbuf), "! ! ALARM ! !");
+    }
+    footer = fbuf;
+  }
   else if (!probe_ok)        footer = "PROB KONTROL EDINIZ";
   else if (batt_perc <= 20)  footer = "BATARYA ZAYIF";
   else if (pending > 2)      footer = "BAGLANTI YOK";
@@ -170,7 +185,7 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
 }
 
 #else  // ENABLE_EPD == false
-void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t, bool, uint32_t) {
+void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t, bool, uint32_t, uint32_t) {
   DEBUG_PRINTLN("[EPD] devre disi (ENABLE_EPD=false)");
 }
 #endif
