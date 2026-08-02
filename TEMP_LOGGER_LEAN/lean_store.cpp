@@ -141,13 +141,12 @@ void store_migrate_to_flash() {
 }
 
 void store_push(const SensorRecord& rec, uint8_t batt_perc) {
-  if (batt_perc <= BATT_LOW_PERSIST_PERC) {
-    DEBUG_PRINTLN("[STORE] push -> LittleFS (dusuk pil)");
-    fs_append(rec);
-  } else {
-    if (rtc_count >= RTC_BUF_MAX) store_migrate_to_flash();  // RTC dolu -> batch spill
-    rtc_push(rec);
-  }
+  (void)batt_perc;
+  // GUC-KESINTISINE DAYANIKLILIK: buffered kayit HER ZAMAN LittleFS'e yazilir
+  // (RTC RAM guc tam kesilince silinir). Online calisirken kayit gonderildigi
+  // icin buffer'a dusmez -> flash yazimi yalnizca OFFLINE'da olur (asinma minimal).
+  DEBUG_PRINTLN("[STORE] push -> LittleFS (kalici)");
+  fs_append(rec);
 }
 
 bool store_peek_oldest(SensorRecord* out) {

@@ -15,7 +15,7 @@
 #define PROJECT_ID              "FYDM-BOARD-01"
 #define PROJECT_ID_HASH         0x7C9246A1UL       // SHA-256(PROJECT_ID)[0:4]
 #define PROTOCOL_VERSION        2                  // v2.1
-#define FW_VERSION              "L1.6.0"           // LEAN — .ino basligindaki changelog ile ayni
+#define FW_VERSION              "L1.7.0"           // LEAN — .ino basligindaki changelog ile ayni
 #define HARDWARE_MODEL          "GTW202-C6"
 
 // -----------------------------------------------------------------------------
@@ -43,6 +43,7 @@
 // -----------------------------------------------------------------------------
 #define DEFAULT_SLEEP_SEC       120UL   // ACK'ten sleep_time_sec gelmezse varsayilan
 #define MIN_VALID_UNIX          1767225600UL  // 2026-01-01; altindaki epoch gecersiz
+#define WDT_TIMEOUT_MS          30000UL       // donanim watchdog: takilma -> otomatik reset
 #define MIN_SLEEP_SEC           10UL
 #define MAX_SLEEP_SEC           3600UL
 

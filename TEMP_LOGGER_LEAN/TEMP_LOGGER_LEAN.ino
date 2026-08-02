@@ -13,9 +13,12 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.6.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.7.0            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.7.0  - Datalogger cekirdek guvence: (1) buffered kayit HER ZAMAN LittleFS'e
+//             (guc-kesintisine dayanikli, RTC RAM tier kaldirildi), (2) donanim
+//             watchdog (WDT_TIMEOUT_MS) - takilmada otomatik reset + feed noktalari
 //   L1.6.0  - EPD alarm: sag panelde UNLEM ucgeni + footer'da alarm BASLANGIC zamani
 //             (g_alarm_start_ts). Sag panel: buffer varsa "KAYIT (n)" + son teslim
 //             zamani (SON KAYIT sayisi gorunur).
@@ -64,6 +67,7 @@
 #include <SPI.h>
 #include "esp_sleep.h"
 #include "esp_mac.h"
+#include "esp_task_wdt.h"
 
 #include "config.h"
 #include "lean_types.h"
@@ -254,6 +258,7 @@ static void apply_ack(const AckResult& ack) {
 //  Uyku
 // -----------------------------------------------------------------------------
 static void go_to_sleep() {
+  esp_task_wdt_delete(NULL);   // uykuya girmeden watchdog'dan cik
   espnow_end();
   power_rail_sleep();
   esp_deep_sleep_enable_gpio_wakeup(1ULL << WAKE_PIN, ESP_GPIO_WAKEUP_GPIO_HIGH);
@@ -283,6 +288,15 @@ void setup() {
   DEBUG_PRINT("  boot#="); DEBUG_PRINTLN(g_boot_count);
 
   pinMode(WAKE_PIN, INPUT_PULLDOWN);
+
+  // --- Watchdog: bu cycle bir yerde takilirsa (I2C/SPI/ESP-NOW) otomatik reset ---
+  // Reset sonrasi buffer LittleFS'te kalici oldugundan veri kaybi olmaz.
+  {
+    esp_task_wdt_config_t twdt = { .timeout_ms = (uint32_t)WDT_TIMEOUT_MS, .idle_core_mask = 0, .trigger_panic = true };
+    if (esp_task_wdt_init(&twdt) == ESP_ERR_INVALID_STATE) esp_task_wdt_reconfigure(&twdt);
+    esp_task_wdt_add(NULL);
+    esp_task_wdt_reset();
+  }
 
 #if ENABLE_ENCRYPTION
   crypto_selftest();   // PMK'yi gateway kanonik test vektoruyle dogrula
@@ -399,6 +413,8 @@ void setup() {
     rec.timestamp = g_last_unix + millis() / 1000;
     if (current_sent && rec.timestamp > g_last_payload_ts) g_last_payload_ts = rec.timestamp;
   }
+
+  esp_task_wdt_reset();   // uzun ESP-NOW/OTA sonrasi watchdog besle
 
   // 5) EPD
   // İlk boot(lar)da MUTLAKA FULL: partial refresh onceden FULL ile kurulan 0x26
