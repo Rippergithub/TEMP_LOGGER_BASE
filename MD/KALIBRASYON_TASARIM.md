@@ -168,3 +168,32 @@ float apply_cal(float raw) {
 4. (Opsiyonel) piecewise LUT (5-nokta) — doğrusal olmayan problarda.
 
 > Not: 1-2 adımları LEAN'i az büyütür; piecewise sadece gerekirse.
+
+---
+
+## 10. Uygulama durumu ve yapılacaklar (checklist)
+
+### ✅ Sensör (LEAN) — TAMAM (L1.9.0)
+- [x] `lean_cal.*` — NVS kalıcı (`cal_data`); model 0/1/2
+- [x] `cal_apply()` ölçümde uygulanıyor (`measure()`)
+- [x] `cmd:cal_set` alımı (offset/linear/piecewise LUT) + `r2≥0.99` kalite kapısı
+- [x] ACK `settings.cal_off` → offset (LUT'u ezmez)
+- [x] Vade takibi + EPD "K" dairesi / footer "KAL VADESI DOLDU" (L1.8.0)
+- [ ] (Ops.) Nem/PT1000 için ayrı katsayı setleri
+- [ ] (Ops.) `cal_point` (sensör-hesaplar) modu — şu an gerek yok
+
+### ⬜ PC / Donanım Merkezi (`faydam_ai_ready` / `pc_ai_ready-main`) — YAPILACAK
+- [ ] Hardware sayfasına **5-nokta kalibrasyon formu** (`ref_i`, `raw_i` girişi; sensör anlık okumasını "oku" ile doldur)
+- [ ] **Fit hesabı**: linear (least-squares `a,b`) + `R²`; opsiyonel piecewise (sıralı LUT)
+- [ ] `R² < 0.99` veya |residual| büyükse **uyar/engelle** (yanlış giriş)
+- [ ] Onayla → gateway'e serial `{"cmd":"cal_set", model, gain/off veya raw/ref, ts, valid_days, cert, by, r2}` gönder
+- [ ] Sonucu + sertifika/operatörü **audit/log**'la; cihaz tablosunda `cal_ts`/vade göster
+- [ ] "Kalibre Et" düğmesi + ilerleme/teyit (BC `cal_cert` ile doğrula)
+
+### ⬜ Gateway (`Faydam_GTW202_ESPGTW`) — YAPILACAK
+- [ ] `cal_set` (ve ops. `cal_point`) komutunu sensöre **JSON forward** (OTA `ota_begin` gibi; mac çıkar + AES-GCM)
+- [ ] Büyük LUT için `0xFE` chunk (gerekirse; 5-nokta tek pakete sığar)
+- [ ] ACK `settings`'e opsiyonel `cal_gain`/`cal_model`/`cal_valid_days` alanları (geriye uyumlu)
+- [ ] (Ops.) `special_cmd=0xCA` — kalibrasyon modu tetikleme
+
+> Sıra önerisi: **PC fit+form → gateway forward → uçtan uca test**. LEAN tarafı hazır ve bekliyor.

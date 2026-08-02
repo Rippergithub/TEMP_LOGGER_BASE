@@ -35,7 +35,7 @@ LEAN bilinçli olarak hafiftir; aşağıdaki liste "neyin olmadığını" ve ön
 | `NetworkManager` | WiFi/HTTP/TLS/NTP/cloud upload | LEAN sadece ESP-NOW |
 | `WebConfigManager` | AP setup wizard, web UI provisioning | Saha provisioning yok |
 | `StorageManager` (WORM/Vault/audit/hash-chain) | ALCOA+ kalıcı arşiv | LEAN'de RTC+LittleFS ring yeterli |
-| `CalibrationManager` | kalibrasyon sertifika/vade | Metroloji katmanı |
+| ~~`CalibrationManager`~~ | kalibrasyon sertifika/vade | ✅ **LEAN'e EKLENDİ (L1.8.0+L1.9.0)** — `lean_cal` (offset/linear/piecewise 5-nokta, NVS), `cal_set`, vade+EPD. PC fit+form & gateway forward yapılacak (MD/KALIBRASYON_TASARIM §10) |
 | `IQ/OQ/PQProtocol` | ALCOA+ kalifikasyon | Regülasyon katmanı |
 | `AuditDumpManager` | audit dump (`special_cmd 0xAD`) | Denetim katmanı |
 | `AccessManager` / `SerialAuth` | rol tabanlı erişim, seri provisioning | Yerel yönetim |
