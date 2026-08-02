@@ -1,6 +1,7 @@
 #include "lean_espnow.h"
 #include "lean_crypto.h"
 #include "lean_ota.h"
+#include "lean_cal.h"
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
@@ -81,6 +82,7 @@ static void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len
 #if ENABLE_OTA
     if (ota_is_json((const char*)plain)) { ota_handle_json((const char*)plain, pn); return; }
 #endif
+    if (cal_is_json((const char*)plain)) { cal_handle_json((const char*)plain, pn); return; }  // cal_set
     parse_ack_json((const char*)plain, pn); return;   // ACK / PAIR_RESP JSON
   }
   // decrypt basarisiz -> belki duz JSON (lab) gelmistir, dene

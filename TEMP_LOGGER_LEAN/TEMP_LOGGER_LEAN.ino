@@ -13,9 +13,12 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.8.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.9.0            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.9.0  - Cok-noktali kalibrasyon (lean_cal, NVS kalici): offset/linear/piecewise
+//             (5-nokta LUT). "cmd:cal_set" ile PC'den katsayi yukleme (r2>=0.99 kapisi).
+//             cal_apply() olcumde uygulanir; ACK offset LUT'u ezmez. (KALIBRASYON_TASARIM)
 //   L1.8.0  - Kalibrasyon vade takibi (TEMP_LOGGER referansi): cal_ts (ACK settings)
 //             + CAL_VALID_DAYS -> vade. EPD: "K" uyari dairesi (yaklasti/tanimsiz),
 //             footer "KALIBRASYON VADESI DOLDU" (doldu) / "KAL: tarih" (uyari).
@@ -78,6 +81,7 @@
 #include "lean_crypto.h"
 #include "lean_espnow.h"
 #include "lean_display.h"
+#include "lean_cal.h"
 #include "TH09C.h"
 
 #if ENABLE_DS18B20
@@ -103,8 +107,7 @@ RTC_DATA_ATTR static float    g_t_low        = T_LOW_LIMIT;
 RTC_DATA_ATTR static float    g_t_high       = T_HIGH_LIMIT;
 RTC_DATA_ATTR static float    g_h_low        = H_LOW_LIMIT;
 RTC_DATA_ATTR static float    g_h_high       = H_HIGH_LIMIT;
-RTC_DATA_ATTR static float    g_cal_off      = 0.0f;
-RTC_DATA_ATTR static uint32_t g_cal_ts       = 0;      // kalibrasyon tarihi (ACK settings.cal_ts)
+// Kalibrasyon artik lean_cal (NVS'te kalici) tarafindan yonetilir.
 RTC_DATA_ATTR static bool     g_in_alarm     = false;  // histerezis durumu
 RTC_DATA_ATTR static uint32_t g_alarm_start_ts = 0;    // alarmin ilk basladigi an (footer BASLANGIC)
 RTC_DATA_ATTR static uint32_t g_last_payload_ts = 0;   // son BASARIYLA gonderilen olcum zamani (getLastPayloadUnix karsiligi)
@@ -183,7 +186,7 @@ static SensorRecord measure() {
   if (m > -120.0f) r.temp = m;
 #endif
 
-  r.temp += g_cal_off;   // kalibrasyon offset (ACK settings)
+  r.temp = cal_apply(r.temp);   // kalibrasyon (offset/linear/piecewise; NVS'te kalici)
 
   // --- Alarm (esik + histerezis). Prob kopuksa alarm degerlendirilmez. ---
   if (r.status == S_STATUS_OK) {
@@ -247,10 +250,9 @@ static void apply_ack(const AckResult& ack) {
   if (ack.has_settings) {   // gateway alarm esikleri + kalibrasyon offset
     g_t_low = ack.t_low; g_t_high = ack.t_high;
     g_h_low = ack.h_low; g_h_high = ack.h_high;
-    g_cal_off = ack.cal_off;
-    if (ack.cal_ts > 0) g_cal_ts = ack.cal_ts;
+    cal_update_offset(ack.cal_off, ack.cal_ts);   // NVS kalici; LUT varsa ezmez
     DEBUG_PRINT("[ACK] settings t=["); DEBUG_PRINT(g_t_low); DEBUG_PRINT(",");
-    DEBUG_PRINT(g_t_high); DEBUG_PRINT("] cal_off="); DEBUG_PRINTLN(g_cal_off);
+    DEBUG_PRINT(g_t_high); DEBUG_PRINT("] cal_off="); DEBUG_PRINTLN(ack.cal_off);
   }
   if (ack.special_cmd == 0xBC) {
     char uid[24]; make_uid(uid, sizeof(uid));
@@ -431,7 +433,8 @@ void setup() {
   // Kalibrasyon vade durumu (TEMP_LOGGER mantigi): 0=OK, 1=uyari(K), 2=vade doldu.
   // Zaman gecerliyse degerlendirilir; cal_ts yoksa "tanimsiz" -> uyari(K).
   uint8_t  cal_state = 0;
-  uint32_t cal_expiry = (g_cal_ts > MIN_VALID_UNIX) ? (g_cal_ts + (uint32_t)CAL_VALID_DAYS * 86400UL) : 0;
+  uint32_t g_cal_ts = cal_ts();
+  uint32_t cal_expiry = (g_cal_ts > MIN_VALID_UNIX) ? (g_cal_ts + (uint32_t)cal_valid_days() * 86400UL) : 0;
   if (g_last_unix > MIN_VALID_UNIX) {
     if (g_cal_ts <= MIN_VALID_UNIX) {
       cal_state = 1;  // kalibrasyon tanimsiz
