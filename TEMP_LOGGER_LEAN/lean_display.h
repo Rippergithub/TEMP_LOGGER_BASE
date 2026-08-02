@@ -15,8 +15,11 @@
 // sent: bu olcum gonderildi mi. last_payload_ts: son basariyla gonderilen olcum
 // zamani (getLastPayloadUnix karsiligi). Panel: SON KAYIT / SON DATA / KAYIT (n).
 // alarm_start_ts: alarm aktifse ilk basladigi an (footer "BASLANGIC"), yoksa 0.
+// cal_state: 0=OK, 1=uyari (K dairesi), 2=vade doldu (footer "KAL VADESI DOLDU").
+// cal_expiry: kalibrasyon bitis unix (footer "KAL: tarih" gosterimi icin).
 void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
                   bool full, int32_t tz_off, uint32_t boot_count, bool sent,
-                  uint32_t last_payload_ts, uint32_t alarm_start_ts);
+                  uint32_t last_payload_ts, uint32_t alarm_start_ts,
+                  uint8_t cal_state, uint32_t cal_expiry);
 
 #endif  // LEAN_DISPLAY_H

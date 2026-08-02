@@ -15,7 +15,7 @@
 #define PROJECT_ID              "FYDM-BOARD-01"
 #define PROJECT_ID_HASH         0x7C9246A1UL       // SHA-256(PROJECT_ID)[0:4]
 #define PROTOCOL_VERSION        2                  // v2.1
-#define FW_VERSION              "L1.7.0"           // LEAN — .ino basligindaki changelog ile ayni
+#define FW_VERSION              "L1.8.0"           // LEAN — .ino basligindaki changelog ile ayni
 #define HARDWARE_MODEL          "GTW202-C6"
 
 // -----------------------------------------------------------------------------
@@ -142,6 +142,10 @@
 #define H_HIGH_LIMIT   100.0f
 #define T_HYSTERESIS   0.5f     // salinim onleme
 #define H_HYSTERESIS   2.0f
+
+// --- Kalibrasyon vade takibi (TEMP_LOGGER referansi) ---
+#define CAL_VALID_DAYS 180      // kalibrasyon gecerlilik suresi (gun)
+#define CAL_WARN_DAYS  30       // son X gunde "K" uyarisi baslar
 
 // Parametre ID'leri (espnow-protocol)
 #define PARAM_TEMP   2

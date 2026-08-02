@@ -13,9 +13,12 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.7.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.8.0            (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.8.0  - Kalibrasyon vade takibi (TEMP_LOGGER referansi): cal_ts (ACK settings)
+//             + CAL_VALID_DAYS -> vade. EPD: "K" uyari dairesi (yaklasti/tanimsiz),
+//             footer "KALIBRASYON VADESI DOLDU" (doldu) / "KAL: tarih" (uyari).
 //   L1.7.0  - Datalogger cekirdek guvence: (1) buffered kayit HER ZAMAN LittleFS'e
 //             (guc-kesintisine dayanikli, RTC RAM tier kaldirildi), (2) donanim
 //             watchdog (WDT_TIMEOUT_MS) - takilmada otomatik reset + feed noktalari
@@ -101,6 +104,7 @@ RTC_DATA_ATTR static float    g_t_high       = T_HIGH_LIMIT;
 RTC_DATA_ATTR static float    g_h_low        = H_LOW_LIMIT;
 RTC_DATA_ATTR static float    g_h_high       = H_HIGH_LIMIT;
 RTC_DATA_ATTR static float    g_cal_off      = 0.0f;
+RTC_DATA_ATTR static uint32_t g_cal_ts       = 0;      // kalibrasyon tarihi (ACK settings.cal_ts)
 RTC_DATA_ATTR static bool     g_in_alarm     = false;  // histerezis durumu
 RTC_DATA_ATTR static uint32_t g_alarm_start_ts = 0;    // alarmin ilk basladigi an (footer BASLANGIC)
 RTC_DATA_ATTR static uint32_t g_last_payload_ts = 0;   // son BASARIYLA gonderilen olcum zamani (getLastPayloadUnix karsiligi)
@@ -244,6 +248,7 @@ static void apply_ack(const AckResult& ack) {
     g_t_low = ack.t_low; g_t_high = ack.t_high;
     g_h_low = ack.h_low; g_h_high = ack.h_high;
     g_cal_off = ack.cal_off;
+    if (ack.cal_ts > 0) g_cal_ts = ack.cal_ts;
     DEBUG_PRINT("[ACK] settings t=["); DEBUG_PRINT(g_t_low); DEBUG_PRINT(",");
     DEBUG_PRINT(g_t_high); DEBUG_PRINT("] cal_off="); DEBUG_PRINTLN(g_cal_off);
   }
@@ -423,7 +428,20 @@ void setup() {
   bool full = (g_boot_count <= 1) ||
               (EPD_FULL_REFRESH_EVERY_N_BOOTS > 0 &&
                (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0);
-  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent, g_last_payload_ts, g_alarm_start_ts);
+  // Kalibrasyon vade durumu (TEMP_LOGGER mantigi): 0=OK, 1=uyari(K), 2=vade doldu.
+  // Zaman gecerliyse degerlendirilir; cal_ts yoksa "tanimsiz" -> uyari(K).
+  uint8_t  cal_state = 0;
+  uint32_t cal_expiry = (g_cal_ts > MIN_VALID_UNIX) ? (g_cal_ts + (uint32_t)CAL_VALID_DAYS * 86400UL) : 0;
+  if (g_last_unix > MIN_VALID_UNIX) {
+    if (g_cal_ts <= MIN_VALID_UNIX) {
+      cal_state = 1;  // kalibrasyon tanimsiz
+    } else {
+      long rem = (long)cal_expiry - (long)g_last_unix;
+      if (rem <= 0) cal_state = 2;
+      else if (rem <= (long)CAL_WARN_DAYS * 86400L) cal_state = 1;
+    }
+  }
+  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent, g_last_payload_ts, g_alarm_start_ts, cal_state, cal_expiry);
 #endif
 
   // 6) UYKU

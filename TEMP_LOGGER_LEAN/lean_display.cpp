@@ -27,7 +27,8 @@ static void setActiveSPI(int activePin) {
 
 void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
                   bool full, int32_t tz_off, uint32_t boot_count, bool sent,
-                  uint32_t last_payload_ts, uint32_t alarm_start_ts) {
+                  uint32_t last_payload_ts, uint32_t alarm_start_ts,
+                  uint8_t cal_state, uint32_t cal_expiry) {
   char buf[24];
   bool probe_ok = (rec.status == S_STATUS_OK || rec.status == S_STATUS_OUT_OF_RANGE);
   bool alarm    = (rec.flags & 0x01) != 0;
@@ -114,6 +115,14 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     Paint_DrawLine(cX - 1, cY + 4, cX + 5, cY - 2, WHITE0, LINE_STYLE_SOLID, DOT_PIXEL_1X1);
   }
 
+  // Kalibrasyon uyarisi "K" dairesi (111,34) — vade yaklasti/tanimsiz veya doldu
+  // (TEMP_LOGGER DisplayManager ile ayni konum/stil).
+  if (cal_state >= 1) {
+    const int kX = 111, kY = 34, r = 8;
+    Paint_DrawCircle(kX, kY, r, BLACK0, DRAW_FILL_FULL, DOT_PIXEL_1X1);
+    Paint_DrawString_EN(kX - 3, kY - 7, "K", &Font16, BLACK0, WHITE0);
+  }
+
   // --- 3. SAG PANEL (x=145..245) ---
   if (alarm) {
     // Alarm: buyuk UNLEM (ucgen + "!") — saat/etiket yerine dikkat cekici ikon.
@@ -164,9 +173,16 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     footer = fbuf;
   }
   else if (!probe_ok)        footer = "PROB KONTROL EDINIZ";
+  else if (cal_state == 2)   footer = "KALIBRASYON VADESI DOLDU";
   else if (batt_perc <= 20)  footer = "BATARYA ZAYIF";
   else if (pending > 2)      footer = "BAGLANTI YOK";
   else {
+    // KAL vade uyarisi varsa (state=1) bilgi slotunu KAL tarihine ayir.
+    if (cal_state == 1 && cal_expiry > 1000000000UL) {
+      struct tm ce; time_t ct = (time_t)((int64_t)cal_expiry + tz_off); gmtime_r(&ct, &ce);
+      strftime(fbuf, sizeof(fbuf), "KAL: %d.%m.%Y", &ce);
+      footer = fbuf;
+    } else
     switch (boot_count % 3) {
       case 0:  snprintf(fbuf, sizeof(fbuf), "HW: %s", HARDWARE_MODEL); break;
       case 1:  snprintf(fbuf, sizeof(fbuf), "FW: %s", FW_VERSION);     break;
@@ -185,7 +201,7 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
 }
 
 #else  // ENABLE_EPD == false
-void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t, bool, uint32_t, uint32_t) {
+void display_show(const SensorRecord&, uint16_t, uint8_t, bool, int32_t, uint32_t, bool, uint32_t, uint32_t, uint8_t, uint32_t) {
   DEBUG_PRINTLN("[EPD] devre disi (ENABLE_EPD=false)");
 }
 #endif
