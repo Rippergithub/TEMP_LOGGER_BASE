@@ -4,7 +4,7 @@ FAYDAM GTW202 / ESP32-C6. Tam sürümün (WORM/vault/audit/MKT/wizard/OTA)
 hafif türevi. Tek iş: **Uyan → Ölç → Gönder → (olmazsa) Sakla → Uyu**.
 
 ## Akış (setup içinde, loop boş)
-1. Güç rayı kur — buck+LDO make-before-break, `BUCK_ON_IN_DEEP_SLEEP` (brownout fix aynen korundu)
+1. Güç rayı kur — uyanık: buck; uyku: LDO-only (`BUCK_ON_IN_DEEP_SLEEP=false`, TEMP_LOGGER_BASE ile aynı)
 2. TH09C oku (+ops. DS18B20/MAX31865), batarya oku
 3. ESP-NOW başlat (CH6, AES-128-GCM) — `WiFi.mode(STA)` = brownout tanısındaki *step1c*
 4. Önce buffer'daki birikmiş kayıtları gönder (en eski→yeni), sonra bu ölçümü

@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <esp_task_wdt.h>
 #include <ArduinoJson.h>
 #include <string.h>
 
@@ -23,8 +24,16 @@ RTC_DATA_ATTR static int8_t rtc_tx_power = ESPNOW_MAX_TX_POWER;  // uyku boyunca
 static uint8_t           s_gw_mac[6];            // ACK gelen kaynak MAC
 static bool              s_gw_known  = false;
 static bool              s_force_bcast = false;  // yeniden kesif: GATEWAY_MAC sabit olsa bile broadcast
+// Anti-replay: ota_ack telemetri ile ayni boot/nonce zincirini kullanmali
+static uint16_t          s_crypto_boot  = 1;
+static uint32_t          s_crypto_nonce = 0;
 
 void espnow_set_force_broadcast(bool b) { s_force_bcast = b; }
+
+static void remember_crypto_ctr(uint16_t boot_cnt, uint32_t nonce) {
+  s_crypto_boot = boot_cnt;
+  if (nonce > s_crypto_nonce) s_crypto_nonce = nonce;
+}
 
 // ---- Callbacks -------------------------------------------------------------
 // Core 3.x / IDF5.5: send_cb imzasi (const wifi_tx_info_t*, status)
@@ -80,6 +89,7 @@ static void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len
   if (pn > 0) {
     plain[pn] = 0;
 #if ENABLE_OTA
+    if (ota_is_binary(plain, (int)pn)) { ota_handle_binary(plain, (int)pn); return; }
     if (ota_is_json((const char*)plain)) { ota_handle_json((const char*)plain, pn); return; }
 #endif
     if (cal_is_json((const char*)plain)) { cal_handle_json((const char*)plain, pn); return; }  // cal_set
@@ -183,6 +193,7 @@ bool espnow_send_record(const SensorRecord& rec, uint16_t boot_cnt,
   memcpy(frame, json, jn); n = jn;
 #endif
   if (n == 0) { DEBUG_PRINTLN("[ESPNOW] encrypt FAIL"); return false; }
+  remember_crypto_ctr(boot_cnt, pkt);
 
   // uygulama ACK durumunu sifirla
   s_app_ack = false; memset(&s_ack, 0, sizeof(s_ack));
@@ -228,6 +239,7 @@ bool espnow_send_bc(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
   memcpy(frame, json, jn); n = jn;
 #endif
   if (n == 0 || n > 250) { DEBUG_PRINTLN("[ESPNOW] BC cerceve>250B (chunk gerekli, LEAN atliyor)"); return false; }
+  remember_crypto_ctr(boot_cnt, nonce);
   bool ok = send_frame(frame, n);
   DEBUG_PRINT("[ESPNOW] BC gonderim="); DEBUG_PRINTLN(ok ? "OK" : "FAIL");
   return ok;
@@ -273,6 +285,7 @@ bool espnow_pair(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
   memcpy(frame, json, jn); n = jn;
 #endif
   if (n == 0) return false;
+  remember_crypto_ctr(boot_cnt, nonce);
 
   s_paired = false;
   for (int r = 0; r < 2 && !s_paired; r++) {
@@ -288,13 +301,26 @@ bool espnow_pair(const char* uid, uint16_t boot_cnt, uint32_t nonce) {
 // send+ACK sonrasi radyo aciken cagirilir. Kisa pencerede BEGIN gelirse OTA
 // dongusune girer; END basariliysa cihaz yeniden baslar (bu fonksiyon donmez).
 // BEGIN gelmezse veya idle timeout olursa doner -> normal akis (uyku) devam.
+//
+// NOT: 1MB+ firmware dakikalar surer. loopTask TWDT (WDT_TIMEOUT_MS=30s)
+// beslenmezse "Task watchdog got triggered / loopTask" ile abort olur
+// (chunk #480 civari ~30s). Her turda esp_task_wdt_reset zorunlu.
 void espnow_ota_listen(uint32_t catch_window_ms) {
   uint32_t t0 = millis();
-  while (!ota_active() && (millis() - t0) < catch_window_ms) delay(10);
-  if (!ota_active()) return;                       // OTA yok (BEGIN gelmedi)
+  while (!ota_active() && (millis() - t0) < catch_window_ms) {
+    esp_task_wdt_reset();
+    espnow_flush_ota_ack();
+    delay(10);
+  }
+  if (!ota_active()) {
+    espnow_flush_ota_ack();  // begin reddi ACK'i varsa
+    return;
+  }
 
   DEBUG_PRINTLN("[OTA] pencere: firmware aliniyor...");
   while (ota_active()) {
+    esp_task_wdt_reset();
+    espnow_flush_ota_ack();
     delay(5);
     if ((millis() - ota_last_ms()) > OTA_IDLE_TIMEOUT_MS) {
       DEBUG_PRINTLN("[OTA] idle timeout -> abort");
@@ -302,6 +328,60 @@ void espnow_ota_listen(uint32_t catch_window_ms) {
       break;
     }
   }
+  espnow_flush_ota_ack();
+}
+
+// recv_cb kuyrugu — send_frame delay'i callback icinde yapilmaz
+static volatile bool     s_ota_ack_pend = false;
+static uint8_t           s_ota_ack_stg  = 0;
+static uint16_t          s_ota_ack_idx  = 0;
+static uint16_t          s_ota_ack_exp  = 0;
+static bool              s_ota_ack_ok   = false;
+
+bool espnow_send_ota_ack(uint8_t stg, uint16_t idx, bool ok, uint16_t expect) {
+  s_ota_ack_stg = stg;
+  s_ota_ack_idx = idx;
+  s_ota_ack_exp = expect;
+  s_ota_ack_ok  = ok;
+  s_ota_ack_pend = true;
+  return true;
+}
+
+void espnow_flush_ota_ack() {
+  if (!s_ota_ack_pend) return;
+  s_ota_ack_pend = false;
+
+  uint8_t stg = s_ota_ack_stg;
+  uint16_t idx = s_ota_ack_idx;
+  uint16_t expect = s_ota_ack_exp;
+  bool ok = s_ota_ack_ok;
+
+  s_crypto_nonce++;
+  uint16_t boot = s_crypto_boot;
+  uint32_t nonce = s_crypto_nonce;
+
+  char json[96];
+  int jn;
+  if (stg == 1) {
+    jn = snprintf(json, sizeof(json),
+                  "{\"cmd\":\"ota_ack\",\"ok\":%u,\"stg\":1}", ok ? 1u : 0u);
+  } else {
+    jn = snprintf(json, sizeof(json),
+                  "{\"cmd\":\"ota_ack\",\"idx\":%u,\"ok\":%u,\"exp\":%u}",
+                  (unsigned)idx, ok ? 1u : 0u, (unsigned)expect);
+  }
+  if (jn <= 0 || jn >= (int)sizeof(json)) return;
+
+  uint8_t frame[GCM_HDR_LEN + GCM_TAG_LEN + 96];
+  size_t n;
+#if ENABLE_ENCRYPTION
+  n = crypto_encrypt((const uint8_t*)json, (size_t)jn, boot, nonce,
+                     frame, sizeof(frame));
+#else
+  memcpy(frame, json, (size_t)jn); n = (size_t)jn;
+#endif
+  if (n == 0) return;
+  (void)send_frame(frame, n);
 }
 #endif
 

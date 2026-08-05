@@ -127,9 +127,11 @@ void EPD_update(void) {
 
 void EPD_update_Partial(void) {
   EPD_W21_WriteCMD(0x22);
-  // 0xC7 = Enable Clk+Analog, skip Temp+LUT load, Display Mode 2 only, Disable Analog+Clk.
-  // Mode 1 bit (bit3) intentionally off — setting both Mode1+Mode2 simultaneously is undefined.
-  EPD_W21_WriteDATA(0xC7);
+  // 0xD7 = Enable Clk+Analog, Load LUT (OTP→working), Display Mode 2, Disable Analog+Clk.
+  // DeepSleep / HW RST sonrasi 0xC7 (LUT skip) BUSY'yi dusurur ama pikselleri surmez —
+  // Faydam_GTW202_TEMP MD/epaper.md ile ayni: partial = 0xD7.
+  // Mode 1 bit (bit3) kasitli kapali — Mode1+Mode2 birlikte tanimsiz.
+  EPD_W21_WriteDATA(0xD7);
   EPD_W21_WriteCMD(0x20);
   lcd_chkstatus();
 }
@@ -138,7 +140,7 @@ void EPD_update_Partial(void) {
 // Caller MUST call lcd_chkstatus() before any further SPI writes (esp. 0x26 baseline).
 void EPD_update_Partial_Async(void) {
   EPD_W21_WriteCMD(0x22);
-  EPD_W21_WriteDATA(0xC7);
+  EPD_W21_WriteDATA(0xD7);
   EPD_W21_WriteCMD(0x20);  // Trigger — but do NOT wait for BUSY
   // Panel will self-complete. No lcd_chkstatus() here.
 }

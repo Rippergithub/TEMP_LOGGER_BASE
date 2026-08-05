@@ -13,9 +13,32 @@
 //  Ayarlar: Flash 40MHz/DIO, CPU 80MHz, Erase Flash Disabled.
 //  Partition: "Default 4MB with spiffs" (OTA app0/app1 + LittleFS buffer).
 // =============================================================================
-//  SURUM: L1.9.0            (config.h FW_VERSION ile ayni tutulmali)
+//  SURUM: L1.9.19           (config.h FW_VERSION ile ayni tutulmali)
 //  -----------------------------------------------------------------------------
 //  DEGISIKLIK GUNLUGU (her degisiklikte en uste yeni satir eklenir):
+//   L1.9.19 - EPD: deep-sleep wake sonrasi PARTIAL kapatildi → her tur FULL.
+//             C6'da RES float / 0x26 kaybi; 0xD7 partial logda OK gorunup ekrani
+//             guncellemiyordu. (~2s/10dk kabul; partial ayni-boot icin kodda).
+//   L1.9.18 - EPD tek-sensor (DS18/MAX, ENABLE_TH09C=0): DisplayManager REGULAR
+//             MODE — buyuk Font24 (cift cizim), derece+C, nem satiri yok; probe
+//             yoksa kalin "--.-" cizgileri. TH09C aciksa eski Font20+RH kalir.
+//   L1.9.17 - EPD partial: 0xC7→0xD7 (DeepSleep sonrasi LUT yukle; C7 BUSY dusurup
+//             pikseli surmuyordu). BUSY=HIGH wake → force FULL (0x26 kaybi).
+//             Erken EPD_RES HIGH (C6 HP GPIO hold yok). GTW epaper.md / DisplayManager.
+//   L1.9.16 - EPD saat: her tur guncelleniyordu ama last_payload_ts oncelikliydi
+//             (bir tur geride) + sent etiketi kullanilmiyordu. Bu tur olcum/
+//             gosterim anina cekildi; SON DATA/SON KAYIT sent'e gore.
+//   L1.9.15 - FIX: sleep-wake sonrasi DS18B20 T=85.00 — 100ms yetersizdi; 11-bit
+//             + waitForConversion + 85°C POR reddi/retry.
+//   L1.9.14 - Uyku guc rayi TEMP_LOGGER_BASE ile ayni: LDO ON + 300ms settle +
+//             buck OFF (BUCK_ON_IN_DEEP_SLEEP=false). Uyku akimi ~0.5mA -> dusuk.
+//   L1.9.13 - SURUM senkron (config L1.9.0 kalmisti) + OTA yeniden flash etiketi
+//   L1.9.12 - OTA: idx sira kontrolu + ota_ack (gateway/PC retry); idle 30s
+//             (6s PC retry ile cakisip yanlis abort ediyordu).
+//   L1.9.11 - OTA hiz: binary MSG_OTA_* (0x10/0x11/0x12) alimi — gateway 200B
+//             ham chunk; JSON yolu geriye donuk. ~3x daha az ESP-NOW paket.
+//   L1.9.10 - FIX: OTA dinleme/yazma sirasinda esp_task_wdt_reset — 30s TWDT
+//             loopTask abort (chunk ~#480) engellendi; uzun firmware OTA tamamlanir.
 //   L1.9.0  - Cok-noktali kalibrasyon (lean_cal, NVS kalici): offset/linear/piecewise
 //             (5-nokta LUT). "cmd:cal_set" ile PC'den katsayi yukleme (r2>=0.99 kapisi).
 //             cal_apply() olcumde uygulanir; ACK offset LUT'u ezmez. (KALIBRASYON_TASARIM)
@@ -129,12 +152,21 @@ static void power_rail_up() {
   digitalWrite(LDO_CTL, LOW);           // LDO'yu buck besliyor (make-before-break)
   pinMode(MAX_CS, OUTPUT); digitalWrite(MAX_CS, HIGH);
   pinMode(EPD_CS, OUTPUT); digitalWrite(EPD_CS, HIGH);
+#if ENABLE_EPD
+  // GTW handlePowerSequence: ESP32-C6'da HP GPIO hold uyku sonrasi tutulmaz;
+  // EPD_RES (19) float→LOW cold-start baslatir. Erken HIGH ile paneli uyandir
+  // (olcum/ESP-NOW ile paralel toparlanir).
+  pinMode(EPD_RES, OUTPUT);
+  digitalWrite(EPD_RES, HIGH);
+#endif
 }
 
 static void power_rail_sleep() {
+  // TEMP_LOGGER_BASE.ino ile birebir: LDO aktif, settle, buck deaktif.
   digitalWrite(LDO_CTL, HIGH);
+  delay(LDO_SETTLE_TIME_MS);
 #if BUCK_ON_IN_DEEP_SLEEP
-  // buck uykuda ACIK kalir -> uyanista ray guclu, boot inrush brownout'u onlenir
+  // buck uykuda ACIK kalir (brownout trade-off; varsayilan false)
 #else
   digitalWrite(REG_CTL, LOW);
 #endif
@@ -175,9 +207,25 @@ static SensorRecord measure() {
   r.temp = t; r.hum = h;
 #endif
 #if ENABLE_DS18B20
-  s_ds18.requestTemperatures(); delay(100);
-  float d = s_ds18.getTempCByIndex(0);
-  if (d > -120.0f) r.temp = d;
+  // Deep-sleep wake'te 100ms yetmez → 85.00 (POR). Tam donusum bekle + bir retry.
+  {
+    float d = DEVICE_DISCONNECTED_C;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      s_ds18.setWaitForConversion(true);
+      s_ds18.setResolution(DS18B20_RESOLUTION_BITS);
+      s_ds18.requestTemperatures();
+      d = s_ds18.getTempCByIndex(0);
+      // 85.0 = donusum bitmeden / guc-glitch sonrasi gecersiz
+      if (d > -120.0f && fabsf(d - DS18B20_POR_TEMP) > 0.05f) break;
+      delay(50);
+    }
+    if (d > -120.0f && fabsf(d - DS18B20_POR_TEMP) > 0.05f) {
+      r.temp = d;
+    } else {
+      r.status = S_STATUS_DISCONNECTED;
+      r.temp = d;
+    }
+  }
 #endif
 #if ENABLE_MAX31865
   digitalWrite(MAX_CS, LOW);
@@ -317,6 +365,8 @@ void setup() {
 #endif
 #if ENABLE_DS18B20
   s_ds18.begin();
+  s_ds18.setResolution(DS18B20_RESOLUTION_BITS);
+  s_ds18.setWaitForConversion(true);
 #endif
 #if ENABLE_MAX31865
   s_max.begin(MAX31865_4WIRE);
@@ -424,12 +474,14 @@ void setup() {
   esp_task_wdt_reset();   // uzun ESP-NOW/OTA sonrasi watchdog besle
 
   // 5) EPD
-  // İlk boot(lar)da MUTLAKA FULL: partial refresh onceden FULL ile kurulan 0x26
-  // baseline'ina gore calisir; baseline yoksa ekran bos kalir.
+  // LEAN = 1 guncelleme / deep-sleep wake. ESP32-C6'da EPD_RES (GPIO19) hold
+  // uykuda tutulmaz → panel cold-reset → 0x26 baseline guvenilmez. Partial
+  // (0xD7 dahil) BUSY dusurup piksel surmeyebilir. Her wake FULL zorunlu.
+  // Partial yolu ayni-boot coklu guncelleme icin kodda duruyor; duty-cycle'da kullanilmaz.
 #if ENABLE_EPD
-  bool full = (g_boot_count <= 1) ||
-              (EPD_FULL_REFRESH_EVERY_N_BOOTS > 0 &&
-               (g_boot_count % EPD_FULL_REFRESH_EVERY_N_BOOTS) == 0);
+  bool full = true;
+  (void)EPD_FULL_REFRESH_EVERY_N_BOOTS;  // config'de kalsin; LEAN wake'te hep FULL
+  DEBUG_PRINTLN("[EPD] mode=FULL (wake after deep-sleep)");
   // Kalibrasyon vade durumu (TEMP_LOGGER mantigi): 0=OK, 1=uyari(K), 2=vade doldu.
   // Zaman gecerliyse degerlendirilir; cal_ts yoksa "tanimsiz" -> uyari(K).
   uint8_t  cal_state = 0;
@@ -444,7 +496,13 @@ void setup() {
       else if (rem <= (long)CAL_WARN_DAYS * 86400L) cal_state = 1;
     }
   }
-  display_show(rec, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent, g_last_payload_ts, g_alarm_start_ts, cal_state, cal_expiry);
+  // Ekran saati: radyo/OTA dinleme sonrasi "simdi"ye cek (olcum ts geride kalmasin).
+  // Kayit/gonderim timestamp'i degismez; sadece gosterim kopyasi guncellenir.
+  SensorRecord disp = rec;
+  if (g_last_unix > MIN_VALID_UNIX) {
+    disp.timestamp = g_last_unix + millis() / 1000;
+  }
+  display_show(disp, store_total(), bpct, full, g_tz_off, g_boot_count, current_sent, g_last_payload_ts, g_alarm_start_ts, cal_state, cal_expiry);
 #endif
 
   // 6) UYKU

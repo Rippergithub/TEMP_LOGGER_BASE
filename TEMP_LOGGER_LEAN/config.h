@@ -15,14 +15,14 @@
 #define PROJECT_ID              "FYDM-BOARD-01"
 #define PROJECT_ID_HASH         0x7C9246A1UL       // SHA-256(PROJECT_ID)[0:4]
 #define PROTOCOL_VERSION        2                  // v2.1
-#define FW_VERSION              "L1.9.0"           // LEAN — .ino basligindaki changelog ile ayni
+#define FW_VERSION              "L1.9.19"         // LEAN — .ino basligindaki changelog ile ayni
 #define HARDWARE_MODEL          "GTW202-C6"
 
 // -----------------------------------------------------------------------------
 //  Ozellik anahtarlari
 // -----------------------------------------------------------------------------
-#define ENABLE_TH09C            true
-#define ENABLE_DS18B20          false
+#define ENABLE_TH09C            false
+#define ENABLE_DS18B20          true
 #define ENABLE_MAX31865         false
 #define ENABLE_EPD              true
 #define ENABLE_ESPNOW           true
@@ -35,7 +35,7 @@
 //    hem OTA hem 30-gun LittleFS buffer'i karsilar.
 #define OTA_LISTEN_WINDOW_MS    1500    // normal: send+ACK sonrasi BEGIN'i yakalama penceresi
 #define OTA_PENDING_WINDOW_MS   30000   // ACK 'ota_pending' ise: BEGIN'i beklerken uyanik kal (30 sn)
-#define OTA_IDLE_TIMEOUT_MS     6000    // chunk gelmezse OTA'yi iptal et (pil koruma)
+#define OTA_IDLE_TIMEOUT_MS     30000   // chunk gelmezse OTA iptal (PC retry ~2.5s×3; 6s yetmiyordu)
 #define OTA_MAX_FW_BYTES        (2u * 1024u * 1024u)  // gecerli firmware boyut ust siniri
 
 // -----------------------------------------------------------------------------
@@ -97,10 +97,11 @@
 #define BAT_MIN_VOLT            3.35f   // %0 (3.3V ray son nokta)
 
 // -----------------------------------------------------------------------------
-//  Guc rayi (brownout fix — dev firmware ile ayni mantik, DOKUNMA)
+//  Guc rayi — TEMP_LOGGER_BASE.ino ile ayni uyku politikasi:
+//  uyanik=buck, uyku=LDO-only (buck kapali) → dusuk uyku akimi.
 // -----------------------------------------------------------------------------
 #define LDO_SETTLE_TIME_MS      300     // REG<->LDO make-before-break ortusmesi
-#define BUCK_ON_IN_DEEP_SLEEP   true    // Uykuda buck acik kal -> uyanista ray guclu
+#define BUCK_ON_IN_DEEP_SLEEP   false   // false = BASE ile ayni: uykuda buck OFF (LDO-only)
 
 // -----------------------------------------------------------------------------
 //  Pin tanimlari (dev config.h ile ayni)
@@ -115,6 +116,11 @@
 #define DS18_PIN  15
 #define MAX_CS    21
 #define WAKE_PIN  GPIO_NUM_4
+
+// DS18B20: 12-bit ~750ms, 11-bit ~375ms. 100ms bekleme 85.00°C (POR) uretir.
+#define DS18B20_RESOLUTION_BITS 11
+#define DS18B20_CONV_TIMEOUT_MS 400
+#define DS18B20_POR_TEMP        85.0f   // donusum bitmeden okunan gecerli-degil deger
 
 #define SPI_MISO  2
 #define SPI_CLK   6
@@ -160,7 +166,9 @@
 // -----------------------------------------------------------------------------
 #define EPD_MODEL_E0213A373     false
 #define EPD_MODEL_DIE02213S     true
-#define EPD_FULL_REFRESH_EVERY_N_BOOTS  10
+// LEAN L1.9.19+: deep-sleep wake'te her zaman FULL (ino). Bu makro sakli; partial
+// ayni-boot senaryosu icin EPD.cpp'de duruyor.
+#define EPD_FULL_REFRESH_EVERY_N_BOOTS  1
 
 // -----------------------------------------------------------------------------
 //  Debug / log

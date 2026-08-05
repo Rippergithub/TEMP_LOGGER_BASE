@@ -53,6 +53,10 @@ void espnow_adapt_tx();    // ACK RSSI'sine gore TX power ayarla (sonraki begin'
 // send+ACK sonrasi OTA penceresi. catch_window_ms icinde BEGIN gelmezse doner.
 // ACK 'ota_pending' ise .ino uzun pencere gecirir (uyanik kalir).
 void espnow_ota_listen(uint32_t catch_window_ms);
+// Gateway'e kisa ota_ack: stg=1 begin, stg=0 data (idx/ok/exp).
+// Not: recv_cb icinden cagrilir — gercek TX espnow_flush_ota_ack (listen loop).
+bool espnow_send_ota_ack(uint8_t stg, uint16_t idx, bool ok, uint16_t expect);
+void espnow_flush_ota_ack();
 #endif
 
 void espnow_end();  // radyoyu kapat

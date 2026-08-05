@@ -11,8 +11,8 @@
 
 // Faydam_GTW202_TEMP DisplayManager duzeni birebir korunmustur (yonetici
 // bagimliliklari olmadan LEAN icin sadelestirildi): 3px cerceve + header bar
-// (MAC + sinyal + pil) + sol sicaklik/nem cercevesi + sag "SON DATA" paneli +
-// footer bar. 250x122, rotation 270. Renkler GUI_Paint (WHITE0/BLACK0).
+// (MAC + sinyal + pil) + sol sicaklik cercevesi (TH09C: Font20+RH; tek sensor:
+// buyuk Font24) + sag "SON DATA" paneli + footer bar. 250x122, rotation 270.
 
 static unsigned char BlackImage[EPD_ARRAY];
 
@@ -32,6 +32,7 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
   char buf[24];
   bool probe_ok = (rec.status == S_STATUS_OK || rec.status == S_STATUS_OUT_OF_RANGE);
   bool alarm    = (rec.flags & 0x01) != 0;
+  bool doFull   = full;
 
   // EPD pin init (Faydam_GTW202_TEMP initDisplay ile birebir).
   // KRITIK: EPD_RES/EPD_DC OUTPUT olmali; RES boşta kalirsa panel resetlenmez.
@@ -47,7 +48,14 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
   digitalWrite(LDO_CTL, HIGH);
   setActiveSPI(EPD_CS);
 
-  EPD_Init_Custom(!full);
+  // GTW DisplayManager::epd_wait_for_busy_clear: deep sleep / RES float sonrasi
+  // BUSY=HIGH ise 0x26 baseline kaybolmus → partial ghost veya "guncellenmedi".
+  if (digitalRead(EPD_BUSY) == HIGH) {
+    doFull = true;
+    DEBUG_PRINTLN("[EPD] BUSY=HIGH at wake: forcing FULL (0x26 baseline lost)");
+  }
+
+  EPD_Init_Custom(!doFull);
   Paint_NewImage(BlackImage, EPD_WIDTH, EPD_HEIGHT, 270, WHITE0);
   Paint_SelectImage(BlackImage);
   Paint_Clear(WHITE0);
@@ -86,28 +94,59 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     Paint_DrawRectangle(batX + 2 + (j * 5), batY + 2, batX + 2 + (j * 5) + 3, batY + 9, WHITE0,
                         DRAW_FILL_FULL, DOT_PIXEL_1X1);
 
-  // --- 2. SOL SICAKLIK/NEM CERCEVESI (5,21)-(140,98) ---
+  // --- 2. SOL SICAKLIK CERCEVESI (5,21)-(140,98) ---
+  // DisplayManager: TH09C → Font20 temp+RH; tek sensor (DS18/MAX) → buyuk Font24, nem yok.
   Paint_DrawRectangle(5, 21, 140, 98, BLACK0, DRAW_FILL_EMPTY, DOT_PIXEL_3X3);
 
-  // Sicaklik "XX.X °C" (Font20). Derece simgesi kucuk daire ile cizilir
-  // (referans DisplayManager ile ayni: sayidan sonra, C'den once).
-  char tprefix[12];
-  if (probe_ok) snprintf(tprefix, sizeof(tprefix), "%.1f", rec.temp);
-  else          snprintf(tprefix, sizeof(tprefix), "--.-");
-  snprintf(buf, sizeof(buf), "%s  C", tprefix);   // sayi + bosluk(derece yeri) + C
-  int tW = strlen(buf) * 12;                       // Font20 width=12
-  int tX = 5 + (137 - tW) / 2, tY = 35;
-  Paint_DrawString_EN(tX, tY, buf, &Font20, WHITE0, BLACK0);
-  // Derece dairesi: sayidan hemen sonra (bosluk konumu)
-  Paint_DrawCircle(tX + (int)strlen(tprefix) * 12 + 6, tY + 3, 2, BLACK0, DRAW_FILL_EMPTY, DOT_PIXEL_1X1);
+#if ENABLE_TH09C
+  // --- HIBRID (Temp + Hum, Font20) ---
+  {
+    char tprefix[12];
+    if (probe_ok) snprintf(tprefix, sizeof(tprefix), "%.1f", rec.temp);
+    else          snprintf(tprefix, sizeof(tprefix), "--.-");
+    snprintf(buf, sizeof(buf), "%s  C", tprefix);
+    int tempY = alarm ? 27 : 35;
+    int humY  = alarm ? 54 : 68;
+    int tW = (int)strlen(buf) * 12;
+    int tX = 5 + (137 - tW) / 2;
+    Paint_DrawString_EN(tX, tempY, buf, &Font20, WHITE0, BLACK0);
+    if (probe_ok) {
+      Paint_DrawCircle(tX + (int)strlen(tprefix) * 12 + 3, tempY + 3, 2, BLACK0,
+                       DRAW_FILL_EMPTY, DOT_PIXEL_2X2);
+    }
+    if (probe_ok) snprintf(buf, sizeof(buf), "%d%% RH", (int)rec.hum);
+    else          snprintf(buf, sizeof(buf), "--.-");
+    int hW = (int)strlen(buf) * 12;
+    Paint_DrawString_EN(5 + (135 - hW) / 2, humY, buf, &Font20, WHITE0, BLACK0);
+  }
+#else
+  // --- TEK SENSOR (sicaklik only): buyuk Font24, cift cizim (bold), nem yok ---
+  {
+    int tempY = alarm ? 50 : 48;
+    if (!probe_ok) {
+      // "--.-" kalin cizgi — font tire e-paper'da cok ince (DisplayManager ile ayni)
+      int cx = 5 + (137 / 2) - 4;
+      int ly = tempY + 10;
+      Paint_DrawLine(cx - 42, ly, cx - 26, ly, BLACK0, LINE_STYLE_SOLID, DOT_PIXEL_3X3);
+      Paint_DrawLine(cx - 20, ly, cx - 4,  ly, BLACK0, LINE_STYLE_SOLID, DOT_PIXEL_3X3);
+      Paint_DrawCircle(cx + 2, ly + 1, 3, BLACK0, DRAW_FILL_FULL, DOT_PIXEL_1X1);
+      Paint_DrawLine(cx + 8, ly, cx + 24, ly, BLACK0, LINE_STYLE_SOLID, DOT_PIXEL_3X3);
+    } else {
+      char tprefix[12];
+      snprintf(tprefix, sizeof(tprefix), "%.1f", rec.temp);
+      int totalWidth = ((int)strlen(tprefix) + 2) * 16;  // Font24 width = 16
+      int startX = 5 + (137 - totalWidth) / 2 - 4;
+      Paint_DrawString_EN(startX, tempY, tprefix, &Font24, WHITE0, BLACK0);
+      Paint_DrawString_EN(startX + 1, tempY, tprefix, &Font24, WHITE0, BLACK0);
+      int nextX = startX + (int)strlen(tprefix) * 16 + 16;
+      Paint_DrawString_EN(nextX, tempY, "C", &Font24, WHITE0, BLACK0);
+      Paint_DrawString_EN(nextX + 1, tempY, "C", &Font24, WHITE0, BLACK0);
+      Paint_DrawCircle(nextX - 8, tempY + 2, 2, BLACK0, DRAW_FILL_EMPTY, DOT_PIXEL_2X2);
+    }
+  }
+#endif
 
-  // Nem "XX% RH" (Font20)
-  if (probe_ok) snprintf(buf, sizeof(buf), "%d%% RH", (int)rec.hum);
-  else          snprintf(buf, sizeof(buf), "--.-");
-  int hW = strlen(buf) * 12;
-  Paint_DrawString_EN(5 + (135 - hW) / 2, 68, buf, &Font20, WHITE0, BLACK0);
-
-  // OK durum dairesi (129,34)
+  // OK durum dairesi (129,34) — DisplayManager ile ayni
   if (probe_ok) {
     const int cX = 129, cY = 34, r = 8;
     Paint_DrawCircle(cX, cY, r, BLACK0, DRAW_FILL_FULL, DOT_PIXEL_1X1);
@@ -115,8 +154,7 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     Paint_DrawLine(cX - 1, cY + 4, cX + 5, cY - 2, WHITE0, LINE_STYLE_SOLID, DOT_PIXEL_1X1);
   }
 
-  // Kalibrasyon uyarisi "K" dairesi (111,34) — vade yaklasti/tanimsiz veya doldu
-  // (TEMP_LOGGER DisplayManager ile ayni konum/stil).
+  // Kalibrasyon uyarisi "K" dairesi (111,34)
   if (cal_state >= 1) {
     const int kX = 111, kY = 34, r = 8;
     Paint_DrawCircle(kX, kY, r, BLACK0, DRAW_FILL_FULL, DOT_PIXEL_1X1);
@@ -134,18 +172,22 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
     Paint_DrawRectangle(tx - 1, by - 10, tx + 2, by - 7, BLACK0, DRAW_FILL_FULL, DOT_PIXEL_2X2); // "!" nokta
     Paint_DrawString_EN(145 + (100 - (int)(9 * 8)) / 2, 30, "! ALARM !", &Font16, WHITE0, BLACK0);
   } else {
-    // last_payload_ts gecerli -> son teslim zamani; buffer varsa "KAYIT (n)".
+    // last_payload_ts = son basariyla teslim; rec.timestamp = bu tur olcum.
+    // Saat: bu turun olcumunu onceliklendir (eski last_payload yuzunden bir tur
+    // geride kalmasin). Yoksa son teslim / gosterilemez.
     bool hasLast = (last_payload_ts > 1000000000UL);
+    bool hasRec  = (rec.timestamp > 1000000000UL);
     char labelBuf[16];
     const char* label;
     if (!probe_ok)            label = "PROB?";
     else if (pending > 0)   { snprintf(labelBuf, sizeof(labelBuf), "KAYIT (%u)", pending); label = labelBuf; }
+    else if (sent)            label = "SON DATA";
     else if (hasLast)         label = "SON KAYIT";
     else                      label = "SON DATA";
     Paint_DrawString_EN(145 + (100 - (int)(strlen(label) * 8)) / 2, 32, label, &Font16, WHITE0, BLACK0);
 
-    uint32_t showTs = hasLast ? last_payload_ts
-                              : (rec.timestamp > 1000000000UL ? rec.timestamp : 0);
+    // showTs: bu tur olcum > son teslim (sent parametresi artik etikette kullaniliyor)
+    uint32_t showTs = hasRec ? rec.timestamp : (hasLast ? last_payload_ts : 0);
     char tb[8], db[12];
     if (showTs > 1000000000UL) {
       struct tm ti; time_t t = (time_t)((int64_t)showTs + tz_off); gmtime_r(&t, &ti);
@@ -194,10 +236,19 @@ void display_show(const SensorRecord& rec, uint16_t pending, uint8_t batt_perc,
   }
   Paint_DrawString_EN((250 - (int)(strlen(footer) * 8)) / 2, 105, footer, &Font16, BLACK0, WHITE0);
 
-  PIC_display(BlackImage, !full);
-  EPD_DeepSleep();
+  PIC_display(BlackImage, !doFull);
+
+  // GTW: full → hemen DeepSleep; partial → panel bitince PowerManager DeepSleep eder.
+  // LEAN tek update/boot: partial sonrasi da DeepSleep (piksel kilidi), ama once BUSY.
+  if (doFull) {
+    EPD_DeepSleep();
+  } else {
+    uint32_t t0 = millis();
+    while (digitalRead(EPD_BUSY) == HIGH && (millis() - t0) < 500) delay(5);
+    EPD_DeepSleep();
+  }
   setActiveSPI(-1);
-  DEBUG_PRINTLN("[EPD] dashboard guncellendi");
+  DEBUG_PRINTLN(doFull ? "[EPD] dashboard guncellendi (FULL)" : "[EPD] dashboard guncellendi (PARTIAL)");
 }
 
 #else  // ENABLE_EPD == false
